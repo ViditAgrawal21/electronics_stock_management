@@ -1,244 +1,327 @@
-/// Utility class for input validation in electronics inventory management
 class Validator {
-  // Login validation
-  static String? validateUsername(String? username) {
-    if (username == null || username.trim().isEmpty) {
-      return 'Username is required';
+  // Email validation
+  static String? validateEmail(String? value) {
+    if (value == null || value.trim().isEmpty) {
+      return 'Email is required';
     }
-    if (username.trim().length < 3) {
-      return 'Username must be at least 3 characters';
+
+    final emailRegex = RegExp(r'^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$');
+    if (!emailRegex.hasMatch(value.trim())) {
+      return 'Please enter a valid email';
     }
+
     return null;
   }
 
-  static String? validatePassword(String? password) {
-    if (password == null || password.isEmpty) {
+  // Password validation
+  static String? validatePassword(String? value) {
+    if (value == null || value.isEmpty) {
       return 'Password is required';
     }
-    if (password.length < 4) {
-      return 'Password must be at least 4 characters';
+
+    if (value.length < 6) {
+      return 'Password must be at least 6 characters';
+    }
+
+    return null;
+  }
+
+  // Required field validation
+  static String? validateRequired(String? value, [String fieldName = 'Field']) {
+    if (value == null || value.trim().isEmpty) {
+      return '$fieldName is required';
     }
     return null;
   }
 
-  // Material/Stock validation
-  static String? validateMaterialName(String? name) {
-    if (name == null || name.trim().isEmpty) {
+  // Number validation
+  static String? validateNumber(String? value, [String fieldName = 'Number']) {
+    if (value == null || value.trim().isEmpty) {
+      return '$fieldName is required';
+    }
+
+    if (double.tryParse(value) == null) {
+      return '$fieldName must be a valid number';
+    }
+
+    return null;
+  }
+
+  // Positive number validation
+  static String? validatePositiveNumber(
+    String? value, [
+    String fieldName = 'Number',
+  ]) {
+    final numberValidation = validateNumber(value, fieldName);
+    if (numberValidation != null) return numberValidation;
+
+    final number = double.parse(value!);
+    if (number <= 0) {
+      return '$fieldName must be greater than 0';
+    }
+
+    return null;
+  }
+
+  // Integer validation
+  static String? validateInteger(String? value, [String fieldName = 'Number']) {
+    if (value == null || value.trim().isEmpty) {
+      return '$fieldName is required';
+    }
+
+    if (int.tryParse(value) == null) {
+      return '$fieldName must be a valid integer';
+    }
+
+    return null;
+  }
+
+  // Positive integer validation
+  static String? validatePositiveInteger(
+    String? value, [
+    String fieldName = 'Number',
+  ]) {
+    final intValidation = validateInteger(value, fieldName);
+    if (intValidation != null) return intValidation;
+
+    final number = int.parse(value!);
+    if (number <= 0) {
+      return '$fieldName must be greater than 0';
+    }
+
+    return null;
+  }
+
+  // Material name validation
+  static String? validateMaterialName(String? value) {
+    if (value == null || value.trim().isEmpty) {
       return 'Material name is required';
     }
-    if (name.trim().length < 2) {
+
+    if (value.trim().length < 2) {
       return 'Material name must be at least 2 characters';
     }
+
+    if (value.trim().length > 100) {
+      return 'Material name must be less than 100 characters';
+    }
+
     return null;
   }
 
-  static String? validateQuantity(String? quantity) {
-    if (quantity == null || quantity.trim().isEmpty) {
-      return 'Quantity is required';
-    }
-    
-    final parsedQty = int.tryParse(quantity.trim());
-    if (parsedQty == null) {
-      return 'Please enter a valid number';
-    }
-    
-    if (parsedQty < 0) {
-      return 'Quantity cannot be negative';
-    }
-    
-    return null;
-  }
-
-  static String? validatePrice(String? price) {
-    if (price == null || price.trim().isEmpty) {
-      return null; // Price is optional
-    }
-    
-    final parsedPrice = double.tryParse(price.trim());
-    if (parsedPrice == null) {
-      return 'Please enter a valid price';
-    }
-    
-    if (parsedPrice < 0) {
-      return 'Price cannot be negative';
-    }
-    
-    return null;
-  }
-
-  // Device/PCB validation
-  static String? validateDeviceName(String? deviceName) {
-    if (deviceName == null || deviceName.trim().isEmpty) {
+  // Device name validation
+  static String? validateDeviceName(String? value) {
+    if (value == null || value.trim().isEmpty) {
       return 'Device name is required';
     }
-    if (deviceName.trim().length < 3) {
+
+    if (value.trim().length < 3) {
       return 'Device name must be at least 3 characters';
     }
+
+    if (value.trim().length > 50) {
+      return 'Device name must be less than 50 characters';
+    }
+
     return null;
   }
 
-  static String? validatePcbName(String? pcbName) {
-    if (pcbName == null || pcbName.trim().isEmpty) {
-      return 'PCB name is required';
-    }
-    if (pcbName.trim().length < 2) {
-      return 'PCB name must be at least 2 characters';
-    }
-    return null;
-  }
-
-  static String? validateReference(String? reference) {
-    if (reference == null || reference.trim().isEmpty) {
+  // PCB reference validation (e.g., C1, R1, U1)
+  static String? validatePCBReference(String? value) {
+    if (value == null || value.trim().isEmpty) {
       return 'Reference is required';
     }
-    if (reference.trim().length < 1) {
-      return 'Reference cannot be empty';
+
+    final referenceRegex = RegExp(r'^[A-Z]+\d+$', caseSensitive: false);
+    if (!referenceRegex.hasMatch(value.trim())) {
+      return 'Reference format should be like C1, R1, U1';
     }
+
     return null;
   }
 
-  static String? validateFootprint(String? footprint) {
-    if (footprint == null || footprint.trim().isEmpty) {
-      return null; // Footprint is optional
+  // Layer validation (top/bottom)
+  static String? validateLayer(String? value) {
+    if (value == null || value.trim().isEmpty) {
+      return 'Layer is required';
     }
+
+    final layer = value.trim().toLowerCase();
+    if (!['top', 'bottom'].contains(layer)) {
+      return 'Layer must be "top" or "bottom"';
+    }
+
     return null;
   }
 
-  // BOM validation
-  static String? validateBomQuantity(String? quantity) {
-    if (quantity == null || quantity.trim().isEmpty) {
-      return 'BOM quantity is required';
-    }
-    
-    final parsedQty = int.tryParse(quantity.trim());
-    if (parsedQty == null) {
-      return 'Please enter a valid number';
-    }
-    
-    if (parsedQty <= 0) {
-      return 'BOM quantity must be greater than 0';
-    }
-    
-    return null;
-  }
-
-  static String? validateSide(String? side) {
-    if (side == null || side.trim().isEmpty) {
-      return null; // Side is optional, will default to 'Top'
-    }
-    
-    final validSides = ['Top', 'Bottom', 'Both'];
-    if (!validSides.contains(side.trim())) {
-      return 'Side must be Top, Bottom, or Both';
-    }
-    
-    return null;
-  }
-
-  // File validation
-  static String? validateExcelFile(String? fileName) {
-    if (fileName == null || fileName.isEmpty) {
-      return 'Please select a file';
-    }
-    
-    if (!fileName.toLowerCase().endsWith('.xlsx') && 
-        !fileName.toLowerCase().endsWith('.xls')) {
-      return 'Please select a valid Excel file (.xlsx or .xls)';
-    }
-    
-    return null;
-  }
-
-  // Batch calculation validation
-  static String? validateBatchSize(String? batchSize) {
-    if (batchSize == null || batchSize.trim().isEmpty) {
-      return 'Batch size is required';
-    }
-    
-    final parsedSize = int.tryParse(batchSize.trim());
-    if (parsedSize == null) {
-      return 'Please enter a valid number';
-    }
-    
-    if (parsedSize <= 0) {
-      return 'Batch size must be greater than 0';
-    }
-    
-    if (parsedSize > 10000) {
-      return 'Batch size too large (max 10000)';
-    }
-    
-    return null;
-  }
-
-  // General validation helpers
-  static bool isValidEmail(String email) {
-    return RegExp(r'^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$').hasMatch(email);
-  }
-
-  static bool isValidNumber(String value) {
-    return int.tryParse(value) != null || double.tryParse(value) != null;
-  }
-
-  static bool isPositiveInteger(String value) {
-    final parsed = int.tryParse(value);
-    return parsed != null && parsed > 0;
-  }
-
-  static bool isNonNegativeInteger(String value) {
-    final parsed = int.tryParse(value);
-    return parsed != null && parsed >= 0;
-  }
-
-  // Clean and sanitize input
-  static String cleanString(String input) {
-    return input.trim().replaceAll(RegExp(r'\s+'), ' ');
-  }
-
-  static String? cleanAndValidateMaterialName(String? name) {
-    if (name == null) return 'Material name is required';
-    
-    final cleaned = cleanString(name);
-    return validateMaterialName(cleaned);
-  }
-
-  static String? cleanAndValidateDeviceName(String? name) {
-    if (name == null) return 'Device name is required';
-    
-    final cleaned = cleanString(name);
-    return validateDeviceName(cleaned);
-  }
-
-  // Stock level validation
-  static String? validateMinimumStock(String? minStock) {
-    if (minStock == null || minStock.trim().isEmpty) {
-      return null; // Minimum stock is optional
-    }
-    
-    final parsed = int.tryParse(minStock.trim());
-    if (parsed == null) {
-      return 'Please enter a valid number';
-    }
-    
-    if (parsed < 0) {
-      return 'Minimum stock cannot be negative';
-    }
-    
-    return null;
-  }
-
-  // Validation for stock updates
-  static String? validateStockUpdate(String? newStock, int currentStock) {
-    final validation = validateQuantity(newStock);
+  // Quantity range validation
+  static String? validateQuantityRange(
+    String? value, {
+    int? min,
+    int? max,
+    String fieldName = 'Quantity',
+  }) {
+    final validation = validatePositiveInteger(value, fieldName);
     if (validation != null) return validation;
-    
-    final newStockValue = int.parse(newStock!.trim());
-    
-    // Warning for significant stock changes (optional - can be removed)
-    if ((newStockValue - currentStock).abs() > 1000) {
-      return 'Large stock change detected. Please verify the quantity';
+
+    final quantity = int.parse(value!);
+
+    if (min != null && quantity < min) {
+      return '$fieldName must be at least $min';
     }
-    
+
+    if (max != null && quantity > max) {
+      return '$fieldName must be at most $max';
+    }
+
     return null;
+  }
+
+  // Phone number validation
+  static String? validatePhoneNumber(String? value) {
+    if (value == null || value.trim().isEmpty) {
+      return null; // Optional field
+    }
+
+    final phoneRegex = RegExp(r'^\+?[\d\s\-\(\)]{10,}$');
+    if (!phoneRegex.hasMatch(value.trim())) {
+      return 'Please enter a valid phone number';
+    }
+
+    return null;
+  }
+
+  // URL validation
+  static String? validateUrl(String? value) {
+    if (value == null || value.trim().isEmpty) {
+      return null; // Optional field
+    }
+
+    try {
+      final uri = Uri.parse(value.trim());
+      if (!uri.hasScheme || !['http', 'https'].contains(uri.scheme)) {
+        return 'Please enter a valid URL (http:// or https://)';
+      }
+    } catch (e) {
+      return 'Please enter a valid URL';
+    }
+
+    return null;
+  }
+
+  // Cost validation (can be 0 or positive)
+  static String? validateCost(String? value) {
+    if (value == null || value.trim().isEmpty) {
+      return null; // Optional field
+    }
+
+    final cost = double.tryParse(value);
+    if (cost == null) {
+      return 'Cost must be a valid number';
+    }
+
+    if (cost < 0) {
+      return 'Cost cannot be negative';
+    }
+
+    return null;
+  }
+
+  // Percentage validation (0-100)
+  static String? validatePercentage(
+    String? value, [
+    String fieldName = 'Percentage',
+  ]) {
+    final numberValidation = validateNumber(value, fieldName);
+    if (numberValidation != null) return numberValidation;
+
+    final percentage = double.parse(value!);
+    if (percentage < 0 || percentage > 100) {
+      return '$fieldName must be between 0 and 100';
+    }
+
+    return null;
+  }
+
+  // Date validation
+  static String? validateDate(String? value, [String fieldName = 'Date']) {
+    if (value == null || value.trim().isEmpty) {
+      return '$fieldName is required';
+    }
+
+    try {
+      DateTime.parse(value);
+    } catch (e) {
+      return 'Please enter a valid $fieldName';
+    }
+
+    return null;
+  }
+
+  // Future date validation
+  static String? validateFutureDate(
+    String? value, [
+    String fieldName = 'Date',
+  ]) {
+    final dateValidation = validateDate(value, fieldName);
+    if (dateValidation != null) return dateValidation;
+
+    final date = DateTime.parse(value!);
+    if (date.isBefore(DateTime.now())) {
+      return '$fieldName must be in the future';
+    }
+
+    return null;
+  }
+
+  // Text length validation
+  static String? validateTextLength(
+    String? value, {
+    int? minLength,
+    int? maxLength,
+    String fieldName = 'Field',
+    bool required = true,
+  }) {
+    if (!required && (value == null || value.trim().isEmpty)) {
+      return null;
+    }
+
+    if (required && (value == null || value.trim().isEmpty)) {
+      return '$fieldName is required';
+    }
+
+    final length = value!.trim().length;
+
+    if (minLength != null && length < minLength) {
+      return '$fieldName must be at least $minLength characters';
+    }
+
+    if (maxLength != null && length > maxLength) {
+      return '$fieldName must be less than $maxLength characters';
+    }
+
+    return null;
+  }
+
+  // Multiple validators
+  static String? validateMultiple(
+    String? value,
+    List<String? Function(String?)> validators,
+  ) {
+    for (var validator in validators) {
+      final result = validator(value);
+      if (result != null) return result;
+    }
+    return null;
+  }
+
+  // Custom validation with condition
+  static String? validateConditional(
+    String? value,
+    bool condition,
+    String? Function(String?) validator,
+  ) {
+    if (!condition) return null;
+    return validator(value);
   }
 }

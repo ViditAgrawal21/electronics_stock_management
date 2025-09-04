@@ -1,41 +1,34 @@
 import 'package:flutter/material.dart';
+import '../models/materials.dart' as model;
+import '../theme/app_theme.dart';
+import '../theme/text_styles.dart';
 
-class MaterialCard extends StatefulWidget {
-  final String materialName;
-  final String reference;
-  final int totalQuantity;
-  final int remainingQuantity;
-  final int usedQuantity;
-  final String? footprint;
-  final bool isLowStock;
+class MaterialsCard extends StatefulWidget {
+  final model.Material material;
   final VoidCallback? onEdit;
+  final VoidCallback? onDelete;
   final Function(int)? onQuantityUpdate;
 
-  const MaterialCard({
-    Key? key,
-    required this.materialName,
-    required this.reference,
-    required this.totalQuantity,
-    required this.remainingQuantity,
-    required this.usedQuantity,
-    this.footprint,
-    this.isLowStock = false,
+  const MaterialsCard({
+    super.key,
+    required this.material,
     this.onEdit,
+    this.onDelete,
     this.onQuantityUpdate,
-  }) : super(key: key);
+  });
 
   @override
-  State<MaterialCard> createState() => _MaterialCardState();
+  State<MaterialsCard> createState() => _MaterialsCardState();
 }
 
-class _MaterialCardState extends State<MaterialCard> {
+class _MaterialsCardState extends State<MaterialsCard> {
   final TextEditingController _quantityController = TextEditingController();
   bool _isEditing = false;
 
   @override
   void initState() {
     super.initState();
-    _quantityController.text = widget.remainingQuantity.toString();
+    _quantityController.text = widget.material.remainingQuantity.toString();
   }
 
   @override
@@ -44,283 +37,331 @@ class _MaterialCardState extends State<MaterialCard> {
     super.dispose();
   }
 
-  void _startEditing() {
-    setState(() {
-      _isEditing = true;
-      _quantityController.text = widget.remainingQuantity.toString();
-      _quantityController.selection = TextSelection.fromPosition(
-        TextPosition(offset: _quantityController.text.length),
-      );
-    });
-  }
-
-  void _saveQuantity() {
-    final newQuantity =
-        int.tryParse(_quantityController.text) ?? widget.remainingQuantity;
-    widget.onQuantityUpdate?.call(newQuantity);
-    setState(() {
-      _isEditing = false;
-    });
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('Stock updated successfully!'),
-        backgroundColor: Colors.green,
-        duration: Duration(seconds: 2),
-      ),
-    );
-  }
-
-  void _cancelEditing() {
-    setState(() {
-      _isEditing = false;
-      _quantityController.text = widget.remainingQuantity.toString();
-    });
-  }
-
   @override
   Widget build(BuildContext context) {
+    final material = widget.material;
+    final statusColor = AppTheme.getStockStatusColor(material.stockStatus);
+
     return Card(
-      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      margin: const EdgeInsets.only(bottom: 12),
       elevation: 2,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(12),
-        side: widget.isLowStock
-            ? const BorderSide(color: Colors.red, width: 2)
-            : BorderSide.none,
+        side: BorderSide(color: statusColor.withOpacity(0.2), width: 1),
       ),
       child: Padding(
         padding: const EdgeInsets.all(16),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Header with material name and low stock indicator
+            // Header row with name and status
             Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Expanded(
-                  child: Text(
-                    widget.materialName,
-                    style: const TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                ),
-                if (widget.isLowStock)
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 8,
-                      vertical: 4,
-                    ),
-                    decoration: BoxDecoration(
-                      color: Colors.red,
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: const Text(
-                      'LOW STOCK',
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontSize: 10,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                  ),
-              ],
-            ),
-            const SizedBox(height: 8),
-
-            // Reference
-            Text(
-              'Ref: ${widget.reference}',
-              style: TextStyle(
-                fontSize: 14,
-                color: Colors.grey[600],
-                fontWeight: FontWeight.w500,
-              ),
-            ),
-
-            if (widget.footprint != null) ...[
-              const SizedBox(height: 4),
-              Text(
-                'Footprint: ${widget.footprint}',
-                style: TextStyle(fontSize: 14, color: Colors.grey[600]),
-              ),
-            ],
-
-            const SizedBox(height: 16),
-
-            // Quantity Information
-            Row(
-              children: [
-                // Total Quantity
-                Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        'Total',
-                        style: TextStyle(fontSize: 12, color: Colors.grey[600]),
+                        material.name,
+                        style: AppTextStyles.cardTitle,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
                       ),
-                      Text(
-                        widget.totalQuantity.toString(),
-                        style: const TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-
-                // Used Quantity
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        'Used',
-                        style: TextStyle(fontSize: 12, color: Colors.grey[600]),
-                      ),
-                      Text(
-                        widget.usedQuantity.toString(),
-                        style: const TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.bold,
-                          color: Colors.orange,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-
-                // Remaining Quantity (Editable)
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        'Remaining',
-                        style: TextStyle(fontSize: 12, color: Colors.grey[600]),
-                      ),
-                      if (_isEditing) ...[
-                        Row(
-                          children: [
-                            Expanded(
-                              child: TextField(
-                                controller: _quantityController,
-                                keyboardType: TextInputType.number,
-                                style: const TextStyle(
-                                  fontSize: 16,
-                                  fontWeight: FontWeight.bold,
-                                ),
-                                decoration: const InputDecoration(
-                                  border: OutlineInputBorder(),
-                                  contentPadding: EdgeInsets.symmetric(
-                                    horizontal: 8,
-                                    vertical: 4,
-                                  ),
-                                  isDense: true,
-                                ),
-                                autofocus: true,
-                                onSubmitted: (_) => _saveQuantity(),
-                              ),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 8),
-                        Row(
-                          children: [
-                            IconButton(
-                              onPressed: _saveQuantity,
-                              icon: const Icon(
-                                Icons.check,
-                                color: Colors.green,
-                              ),
-                              iconSize: 20,
-                              padding: EdgeInsets.zero,
-                              constraints: const BoxConstraints(),
-                            ),
-                            const SizedBox(width: 8),
-                            IconButton(
-                              onPressed: _cancelEditing,
-                              icon: const Icon(Icons.close, color: Colors.red),
-                              iconSize: 20,
-                              padding: EdgeInsets.zero,
-                              constraints: const BoxConstraints(),
-                            ),
-                          ],
-                        ),
-                      ] else ...[
-                        GestureDetector(
-                          onTap: _startEditing,
-                          child: Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 8,
-                              vertical: 4,
-                            ),
-                            decoration: BoxDecoration(
-                              color: widget.isLowStock
-                                  ? Colors.red[50]
-                                  : Colors.blue[50],
-                              borderRadius: BorderRadius.circular(4),
-                              border: Border.all(
-                                color: widget.isLowStock
-                                    ? Colors.red
-                                    : Colors.blue,
-                                width: 1,
-                              ),
-                            ),
-                            child: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Text(
-                                  widget.remainingQuantity.toString(),
-                                  style: TextStyle(
-                                    fontSize: 16,
-                                    fontWeight: FontWeight.bold,
-                                    color: widget.isLowStock
-                                        ? Colors.red
-                                        : Colors.blue,
-                                  ),
-                                ),
-                                const SizedBox(width: 4),
-                                Icon(
-                                  Icons.edit,
-                                  size: 14,
-                                  color: widget.isLowStock
-                                      ? Colors.red
-                                      : Colors.blue,
-                                ),
-                              ],
-                            ),
-                          ),
+                      if (material.description != null) ...[
+                        const SizedBox(height: 4),
+                        Text(
+                          material.description!,
+                          style: AppTextStyles.cardSubtitle,
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
                         ),
                       ],
                     ],
                   ),
                 ),
+                const SizedBox(width: 12),
+                _buildStatusChip(material.stockStatus, statusColor),
               ],
             ),
+            const SizedBox(height: 16),
 
-            // Progress Bar
-            const SizedBox(height: 12),
-            LinearProgressIndicator(
-              value: widget.totalQuantity > 0
-                  ? (widget.totalQuantity - widget.remainingQuantity) /
-                        widget.totalQuantity
-                  : 0,
-              backgroundColor: Colors.grey[300],
-              valueColor: AlwaysStoppedAnimation<Color>(
-                widget.isLowStock ? Colors.red : Colors.green,
-              ),
+            // Quantity information
+            Row(
+              children: [
+                Expanded(
+                  child: _buildQuantityInfo(
+                    'Initial',
+                    material.initialQuantity,
+                    Colors.blue,
+                    Icons.inventory_2,
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: _buildQuantityInfo(
+                    'Remaining',
+                    material.remainingQuantity,
+                    statusColor,
+                    Icons.store,
+                    isEditable: true,
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: _buildQuantityInfo(
+                    'Used',
+                    material.calculatedUsedQuantity,
+                    Colors.grey,
+                    Icons.remove_circle_outline,
+                  ),
+                ),
+              ],
             ),
-            const SizedBox(height: 4),
-            Text(
-              '${((widget.totalQuantity - widget.remainingQuantity) / (widget.totalQuantity > 0 ? widget.totalQuantity : 1) * 100).toStringAsFixed(1)}% used',
-              style: TextStyle(fontSize: 12, color: Colors.grey[600]),
+            const SizedBox(height: 16),
+
+            // Progress bar
+            _buildProgressBar(),
+            const SizedBox(height: 16),
+
+            // Action buttons and last used info
+            Row(
+              children: [
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text('Last Used', style: AppTextStyles.dateText),
+                      const SizedBox(height: 2),
+                      Text(
+                        _formatDate(material.lastUsedAt),
+                        style: AppTextStyles.dateText.copyWith(
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 12),
+                _buildActionButtons(),
+              ],
             ),
           ],
         ),
       ),
     );
+  }
+
+  Widget _buildStatusChip(String status, Color color) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.1),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: color.withOpacity(0.3)),
+      ),
+      child: Text(status, style: AppTextStyles.chipText.copyWith(color: color)),
+    );
+  }
+
+  Widget _buildQuantityInfo(
+    String label,
+    int quantity,
+    Color color,
+    IconData icon, {
+    bool isEditable = false,
+  }) {
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.05),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: color.withOpacity(0.2)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(icon, size: 14, color: color),
+              const SizedBox(width: 4),
+              Text(
+                label,
+                style: TextStyle(
+                  fontSize: 10,
+                  fontWeight: FontWeight.w500,
+                  color: color,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 4),
+          if (isEditable && _isEditing)
+            SizedBox(
+              height: 30,
+              child: TextFormField(
+                controller: _quantityController,
+                keyboardType: TextInputType.number,
+                style: AppTextStyles.quantityText.copyWith(color: color),
+                decoration: InputDecoration(
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(4),
+                  ),
+                  contentPadding: const EdgeInsets.symmetric(
+                    horizontal: 8,
+                    vertical: 0,
+                  ),
+                  isDense: true,
+                ),
+                onFieldSubmitted: _handleQuantitySubmit,
+              ),
+            )
+          else
+            GestureDetector(
+              onTap: isEditable
+                  ? () => setState(() => _isEditing = true)
+                  : null,
+              child: Text(
+                quantity.toString(),
+                style: AppTextStyles.quantityText.copyWith(color: color),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildProgressBar() {
+    final material = widget.material;
+    double progress = material.initialQuantity > 0
+        ? (material.initialQuantity - material.remainingQuantity) /
+              material.initialQuantity
+        : 0.0;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Text(
+              'Usage Progress',
+              style: TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w500,
+                color: Colors.grey[600],
+              ),
+            ),
+            Text(
+              '${(progress * 100).toStringAsFixed(1)}%',
+              style: TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+                color: Colors.grey[700],
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 4),
+        LinearProgressIndicator(
+          value: progress,
+          backgroundColor: Colors.grey[200],
+          valueColor: AlwaysStoppedAnimation<Color>(
+            AppTheme.getStockQuantityColor(
+              material.remainingQuantity,
+              material.initialQuantity,
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildActionButtons() {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        if (_isEditing) ...[
+          // Save and cancel buttons when editing
+          IconButton(
+            icon: const Icon(Icons.check, color: Colors.green),
+            onPressed: () => _handleQuantitySubmit(_quantityController.text),
+            tooltip: 'Save',
+            constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+            padding: const EdgeInsets.all(4),
+          ),
+          IconButton(
+            icon: const Icon(Icons.close, color: Colors.red),
+            onPressed: _cancelEdit,
+            tooltip: 'Cancel',
+            constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+            padding: const EdgeInsets.all(4),
+          ),
+        ] else ...[
+          // Regular action buttons
+          if (widget.onEdit != null)
+            IconButton(
+              icon: Icon(Icons.edit, color: Colors.blue[600]),
+              onPressed: widget.onEdit,
+              tooltip: 'Edit',
+              constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+              padding: const EdgeInsets.all(4),
+            ),
+          if (widget.onDelete != null)
+            IconButton(
+              icon: Icon(Icons.delete, color: Colors.red[600]),
+              onPressed: widget.onDelete,
+              tooltip: 'Delete',
+              constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+              padding: const EdgeInsets.all(4),
+            ),
+        ],
+      ],
+    );
+  }
+
+  void _handleQuantitySubmit(String value) {
+    final newQuantity = int.tryParse(value);
+    if (newQuantity != null &&
+        newQuantity >= 0 &&
+        newQuantity <= widget.material.initialQuantity) {
+      widget.onQuantityUpdate?.call(newQuantity);
+      setState(() {
+        _isEditing = false;
+      });
+    } else {
+      // Reset to original value if invalid
+      _quantityController.text = widget.material.remainingQuantity.toString();
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Invalid quantity. Please enter a valid number.'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
+  }
+
+  void _cancelEdit() {
+    _quantityController.text = widget.material.remainingQuantity.toString();
+    setState(() {
+      _isEditing = false;
+    });
+  }
+
+  String _formatDate(DateTime date) {
+    final now = DateTime.now();
+    final difference = now.difference(date);
+
+    if (difference.inDays == 0) {
+      return 'Today';
+    } else if (difference.inDays == 1) {
+      return 'Yesterday';
+    } else if (difference.inDays < 7) {
+      return '${difference.inDays} days ago';
+    } else if (difference.inDays < 30) {
+      return '${(difference.inDays / 7).floor()} weeks ago';
+    } else {
+      return '${date.day}/${date.month}/${date.year}';
+    }
   }
 }

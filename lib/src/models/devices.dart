@@ -1,92 +1,168 @@
-import 'dart:convert';
+import 'pcb.dart';
+
+class SubComponent {
+  final String id;
+  final String name;
+  final int quantity;
+  final String? description;
+
+  SubComponent({
+    required this.id,
+    required this.name,
+    required this.quantity,
+    this.description,
+  });
+
+  // Create from JSON
+  factory SubComponent.fromJson(Map<String, dynamic> json) {
+    return SubComponent(
+      id: json['id'] ?? '',
+      name: json['name'] ?? '',
+      quantity: json['quantity'] ?? 1,
+      description: json['description'],
+    );
+  }
+
+  // Convert to JSON
+  Map<String, dynamic> toJson() {
+    return {
+      'id': id,
+      'name': name,
+      'quantity': quantity,
+      'description': description,
+    };
+  }
+
+  // Copy with method
+  SubComponent copyWith({
+    String? id,
+    String? name,
+    int? quantity,
+    String? description,
+  }) {
+    return SubComponent(
+      id: id ?? this.id,
+      name: name ?? this.name,
+      quantity: quantity ?? this.quantity,
+      description: description ?? this.description,
+    );
+  }
+
+  @override
+  String toString() {
+    return 'SubComponent(id: $id, name: $name, qty: $quantity)';
+  }
+
+  @override
+  bool operator ==(Object other) {
+    if (identical(this, other)) return true;
+    return other is SubComponent && other.id == id;
+  }
+
+  @override
+  int get hashCode => id.hashCode;
+}
 
 class Device {
   final String id;
   final String name;
-  final String description;
-  final List<DeviceComponent> components;
-  final List<DevicePCB> pcbs;
-  final DateTime createdDate;
-  final DateTime? lastModified;
-  final bool isActive;
+  final List<SubComponent> subComponents;
+  final List<PCB> pcbs;
+  final DateTime createdAt;
+  final DateTime updatedAt;
+  final String? description;
 
   Device({
     required this.id,
     required this.name,
-    required this.description,
-    required this.components,
+    required this.subComponents,
     required this.pcbs,
-    required this.createdDate,
-    this.lastModified,
-    this.isActive = true,
+    required this.createdAt,
+    required this.updatedAt,
+    this.description,
   });
 
-  // Copy constructor for updates
+  // Get total PCBs count
+  int get totalPcbs => pcbs.length;
+
+  // Get total sub components count
+  int get totalSubComponents =>
+      subComponents.fold(0, (sum, comp) => sum + comp.quantity);
+
+  // Get PCBs with BOM
+  List<PCB> get pcbsWithBOM => pcbs.where((pcb) => pcb.hasBOM).toList();
+
+  // Get PCBs without BOM
+  List<PCB> get pcbsWithoutBOM => pcbs.where((pcb) => !pcb.hasBOM).toList();
+
+  // Check if device is ready for production (all PCBs have BOM)
+  bool get isReadyForProduction =>
+      pcbs.isNotEmpty && pcbs.every((pcb) => pcb.hasBOM);
+
+  // Create from JSON
+  factory Device.fromJson(Map<String, dynamic> json) {
+    return Device(
+      id: json['id'] ?? '',
+      name: json['name'] ?? '',
+      subComponents:
+          (json['subComponents'] as List<dynamic>?)
+              ?.map(
+                (comp) => SubComponent.fromJson(comp as Map<String, dynamic>),
+              )
+              .toList() ??
+          [],
+      pcbs:
+          (json['pcbs'] as List<dynamic>?)
+              ?.map((pcb) => PCB.fromJson(pcb as Map<String, dynamic>))
+              .toList() ??
+          [],
+      createdAt: DateTime.parse(
+        json['createdAt'] ?? DateTime.now().toIso8601String(),
+      ),
+      updatedAt: DateTime.parse(
+        json['updatedAt'] ?? DateTime.now().toIso8601String(),
+      ),
+      description: json['description'],
+    );
+  }
+
+  // Convert to JSON
+  Map<String, dynamic> toJson() {
+    return {
+      'id': id,
+      'name': name,
+      'subComponents': subComponents.map((comp) => comp.toJson()).toList(),
+      'pcbs': pcbs.map((pcb) => pcb.toJson()).toList(),
+      'createdAt': createdAt.toIso8601String(),
+      'updatedAt': updatedAt.toIso8601String(),
+      'description': description,
+    };
+  }
+
+  // Copy with method
   Device copyWith({
     String? id,
     String? name,
+    List<SubComponent>? subComponents,
+    List<PCB>? pcbs,
+    DateTime? createdAt,
+    DateTime? updatedAt,
     String? description,
-    List<DeviceComponent>? components,
-    List<DevicePCB>? pcbs,
-    DateTime? createdDate,
-    DateTime? lastModified,
-    bool? isActive,
   }) {
     return Device(
       id: id ?? this.id,
       name: name ?? this.name,
-      description: description ?? this.description,
-      components: components ?? this.components,
+      subComponents: subComponents ?? this.subComponents,
       pcbs: pcbs ?? this.pcbs,
-      createdDate: createdDate ?? this.createdDate,
-      lastModified: lastModified ?? this.lastModified,
-      isActive: isActive ?? this.isActive,
+      createdAt: createdAt ?? this.createdAt,
+      updatedAt: updatedAt ?? this.updatedAt,
+      description: description ?? this.description,
     );
   }
-
-  // Convert to Map for storage
-  Map<String, dynamic> toMap() {
-    return {
-      'id': id,
-      'name': name,
-      'description': description,
-      'components': components.map((c) => c.toMap()).toList(),
-      'pcbs': pcbs.map((p) => p.toMap()).toList(),
-      'createdDate': createdDate.toIso8601String(),
-      'lastModified': lastModified?.toIso8601String(),
-      'isActive': isActive,
-    };
-  }
-
-  // Create from Map for loading
-  factory Device.fromMap(Map<String, dynamic> map) {
-    return Device(
-      id: map['id'] ?? '',
-      name: map['name'] ?? '',
-      description: map['description'] ?? '',
-      components: (map['components'] as List<dynamic>? ?? [])
-          .map((c) => DeviceComponent.fromMap(c as Map<String, dynamic>))
-          .toList(),
-      pcbs: (map['pcbs'] as List<dynamic>? ?? [])
-          .map((p) => DevicePCB.fromMap(p as Map<String, dynamic>))
-          .toList(),
-      createdDate: DateTime.parse(map['createdDate'] ?? DateTime.now().toIso8601String()),
-      lastModified: map['lastModified'] != null 
-          ? DateTime.parse(map['lastModified']) 
-          : null,
-      isActive: map['isActive'] ?? true,
-    );
-  }
-
-  // Convert to JSON string
-  String toJson() => jsonEncode(toMap());
-
-  // Create from JSON string
-  factory Device.fromJson(String source) => Device.fromMap(jsonDecode(source));
 
   @override
   String toString() {
-    return 'Device(id: $id, name: $name, description: $description, components: ${components.length}, pcbs: ${pcbs.length})';
+    return 'Device(id: $id, name: $name, pcbs: ${pcbs.length}, components: ${subComponents.length})';
   }
 
   @override
@@ -97,310 +173,17 @@ class Device {
 
   @override
   int get hashCode => id.hashCode;
-
-  // Helper methods
-  int get totalComponentsCount => components.length;
-  int get totalPCBsCount => pcbs.length;
-  
-  // Get all unique materials needed for this device
-  List<String> get allRequiredMaterials {
-    Set<String> materials = {};
-    
-    // Add component materials
-    for (var component in components) {
-      materials.add(component.materialName);
-    }
-    
-    // Add PCB materials
-    for (var pcb in pcbs) {
-      for (var bomItem in pcb.bomItems) {
-        materials.add(bomItem.materialName);
-      }
-    }
-    
-    return materials.toList();
-  }
-
-  // Calculate total material requirement for given quantity
-  Map<String, int> calculateMaterialRequirement(int deviceQuantity) {
-    Map<String, int> requirements = {};
-    
-    // Calculate component requirements
-    for (var component in components) {
-      String material = component.materialName;
-      int required = component.quantity * deviceQuantity;
-      requirements[material] = (requirements[material] ?? 0) + required;
-    }
-    
-    // Calculate PCB material requirements
-    for (var pcb in pcbs) {
-      for (var bomItem in pcb.bomItems) {
-        String material = bomItem.materialName;
-        int required = bomItem.quantity * pcb.quantity * deviceQuantity;
-        requirements[material] = (requirements[material] ?? 0) + required;
-      }
-    }
-    
-    return requirements;
-  }
 }
 
-class DeviceComponent {
-  final String id;
-  final String name;
-  final String materialName; // Reference to raw material
-  final int quantity;
-  final String? description;
-  final String? location; // Where this component is used
-
-  DeviceComponent({
-    required this.id,
-    required this.name,
-    required this.materialName,
-    required this.quantity,
-    this.description,
-    this.location,
-  });
-
-  DeviceComponent copyWith({
-    String? id,
-    String? name,
-    String? materialName,
-    int? quantity,
-    String? description,
-    String? location,
-  }) {
-    return DeviceComponent(
-      id: id ?? this.id,
-      name: name ?? this.name,
-      materialName: materialName ?? this.materialName,
-      quantity: quantity ?? this.quantity,
-      description: description ?? this.description,
-      location: location ?? this.location,
-    );
-  }
-
-  Map<String, dynamic> toMap() {
-    return {
-      'id': id,
-      'name': name,
-      'materialName': materialName,
-      'quantity': quantity,
-      'description': description,
-      'location': location,
-    };
-  }
-
-  factory DeviceComponent.fromMap(Map<String, dynamic> map) {
-    return DeviceComponent(
-      id: map['id'] ?? '',
-      name: map['name'] ?? '',
-      materialName: map['materialName'] ?? '',
-      quantity: map['quantity']?.toInt() ?? 0,
-      description: map['description'],
-      location: map['location'],
-    );
-  }
-
-  @override
-  String toString() {
-    return 'DeviceComponent(name: $name, material: $materialName, qty: $quantity)';
-  }
-
-  @override
-  bool operator ==(Object other) {
-    if (identical(this, other)) return true;
-    return other is DeviceComponent && other.id == id;
-  }
-
-  @override
-  int get hashCode => id.hashCode;
-}
-
-class DevicePCB {
-  final String id;
-  final String name;
-  final int quantity; // How many of this PCB needed per device
-  final List<BOMItem> bomItems;
-  final String? description;
-  final PCBType type;
-
-  DevicePCB({
-    required this.id,
-    required this.name,
-    required this.quantity,
-    required this.bomItems,
-    this.description,
-    this.type = PCBType.standard,
-  });
-
-  DevicePCB copyWith({
-    String? id,
-    String? name,
-    int? quantity,
-    List<BOMItem>? bomItems,
-    String? description,
-    PCBType? type,
-  }) {
-    return DevicePCB(
-      id: id ?? this.id,
-      name: name ?? this.name,
-      quantity: quantity ?? this.quantity,
-      bomItems: bomItems ?? this.bomItems,
-      description: description ?? this.description,
-      type: type ?? this.type,
-    );
-  }
-
-  Map<String, dynamic> toMap() {
-    return {
-      'id': id,
-      'name': name,
-      'quantity': quantity,
-      'bomItems': bomItems.map((item) => item.toMap()).toList(),
-      'description': description,
-      'type': type.name,
-    };
-  }
-
-  factory DevicePCB.fromMap(Map<String, dynamic> map) {
-    return DevicePCB(
-      id: map['id'] ?? '',
-      name: map['name'] ?? '',
-      quantity: map['quantity']?.toInt() ?? 1,
-      bomItems: (map['bomItems'] as List<dynamic>? ?? [])
-          .map((item) => BOMItem.fromMap(item as Map<String, dynamic>))
-          .toList(),
-      description: map['description'],
-      type: PCBType.values.firstWhere(
-        (e) => e.name == map['type'], 
-        orElse: () => PCBType.standard,
-      ),
-    );
-  }
-
-  @override
-  String toString() {
-    return 'DevicePCB(name: $name, qty: $quantity, bomItems: ${bomItems.length})';
-  }
-
-  @override
-  bool operator ==(Object other) {
-    if (identical(this, other)) return true;
-    return other is DevicePCB && other.id == id;
-  }
-
-  @override
-  int get hashCode => id.hashCode;
-
-  // Get total material requirement for this PCB
-  Map<String, int> getMaterialRequirement() {
-    Map<String, int> requirements = {};
-    for (var bomItem in bomItems) {
-      String material = bomItem.materialName;
-      requirements[material] = (requirements[material] ?? 0) + bomItem.quantity;
-    }
-    return requirements;
-  }
-}
-
-// Simple BOM Item class for DevicePCB
-class BOMItem {
-  final String id;
-  final String reference;
-  final String materialName;
-  final String footprint;
-  final int quantity;
-  final PCBSide side;
-
-  BOMItem({
-    required this.id,
-    required this.reference,
-    required this.materialName,
-    required this.footprint,
-    required this.quantity,
-    this.side = PCBSide.top,
-  });
-
-  BOMItem copyWith({
-    String? id,
-    String? reference,
-    String? materialName,
-    String? footprint,
-    int? quantity,
-    PCBSide? side,
-  }) {
-    return BOMItem(
-      id: id ?? this.id,
-      reference: reference ?? this.reference,
-      materialName: materialName ?? this.materialName,
-      footprint: footprint ?? this.footprint,
-      quantity: quantity ?? this.quantity,
-      side: side ?? this.side,
-    );
-  }
-
-  Map<String, dynamic> toMap() {
-    return {
-      'id': id,
-      'reference': reference,
-      'materialName': materialName,
-      'footprint': footprint,
-      'quantity': quantity,
-      'side': side.name,
-    };
-  }
-
-  factory BOMItem.fromMap(Map<String, dynamic> map) {
-    return BOMItem(
-      id: map['id'] ?? '',
-      reference: map['reference'] ?? '',
-      materialName: map['materialName'] ?? '',
-      footprint: map['footprint'] ?? '',
-      quantity: map['quantity']?.toInt() ?? 1,
-      side: PCBSide.values.firstWhere(
-        (e) => e.name == map['side'], 
-        orElse: () => PCBSide.top,
-      ),
-    );
-  }
-
-  @override
-  String toString() {
-    return 'BOMItem(ref: $reference, material: $materialName, qty: $quantity)';
-  }
-}
-
-// Enums
-enum PCBType {
-  standard,
-  cape,
-  dido,
-  led,
-  display,
-  sensor,
-  power,
-  custom
-}
-
-enum PCBSide {
-  top,
-  bottom,
-  both
-}
-
-// Production Record for tracking finished devices
 class ProductionRecord {
   final String id;
   final String deviceId;
   final String deviceName;
   final int quantityProduced;
   final DateTime productionDate;
-  final Map<String, int> materialsUsed; // material_name -> quantity_used
-  final double? totalCost;
-  final String? batchNumber;
+  final Map<String, int> materialsUsed; // materialId -> quantity used
+  final double totalCost;
   final String? notes;
-  final ProductionStatus status;
 
   ProductionRecord({
     required this.id,
@@ -409,12 +192,48 @@ class ProductionRecord {
     required this.quantityProduced,
     required this.productionDate,
     required this.materialsUsed,
-    this.totalCost,
-    this.batchNumber,
+    required this.totalCost,
     this.notes,
-    this.status = ProductionStatus.completed,
   });
 
+  // Get total materials used count
+  int get totalMaterialsUsed =>
+      materialsUsed.values.fold(0, (sum, qty) => sum + qty);
+
+  // Get unique materials count
+  int get uniqueMaterialsUsed => materialsUsed.keys.length;
+
+  // Create from JSON
+  factory ProductionRecord.fromJson(Map<String, dynamic> json) {
+    return ProductionRecord(
+      id: json['id'] ?? '',
+      deviceId: json['deviceId'] ?? '',
+      deviceName: json['deviceName'] ?? '',
+      quantityProduced: json['quantityProduced'] ?? 0,
+      productionDate: DateTime.parse(
+        json['productionDate'] ?? DateTime.now().toIso8601String(),
+      ),
+      materialsUsed: Map<String, int>.from(json['materialsUsed'] ?? {}),
+      totalCost: (json['totalCost'] ?? 0).toDouble(),
+      notes: json['notes'],
+    );
+  }
+
+  // Convert to JSON
+  Map<String, dynamic> toJson() {
+    return {
+      'id': id,
+      'deviceId': deviceId,
+      'deviceName': deviceName,
+      'quantityProduced': quantityProduced,
+      'productionDate': productionDate.toIso8601String(),
+      'materialsUsed': materialsUsed,
+      'totalCost': totalCost,
+      'notes': notes,
+    };
+  }
+
+  // Copy with method
   ProductionRecord copyWith({
     String? id,
     String? deviceId,
@@ -423,9 +242,7 @@ class ProductionRecord {
     DateTime? productionDate,
     Map<String, int>? materialsUsed,
     double? totalCost,
-    String? batchNumber,
     String? notes,
-    ProductionStatus? status,
   }) {
     return ProductionRecord(
       id: id ?? this.id,
@@ -435,54 +252,21 @@ class ProductionRecord {
       productionDate: productionDate ?? this.productionDate,
       materialsUsed: materialsUsed ?? this.materialsUsed,
       totalCost: totalCost ?? this.totalCost,
-      batchNumber: batchNumber ?? this.batchNumber,
       notes: notes ?? this.notes,
-      status: status ?? this.status,
-    );
-  }
-
-  Map<String, dynamic> toMap() {
-    return {
-      'id': id,
-      'deviceId': deviceId,
-      'deviceName': deviceName,
-      'quantityProduced': quantityProduced,
-      'productionDate': productionDate.toIso8601String(),
-      'materialsUsed': materialsUsed,
-      'totalCost': totalCost,
-      'batchNumber': batchNumber,
-      'notes': notes,
-      'status': status.name,
-    };
-  }
-
-  factory ProductionRecord.fromMap(Map<String, dynamic> map) {
-    return ProductionRecord(
-      id: map['id'] ?? '',
-      deviceId: map['deviceId'] ?? '',
-      deviceName: map['deviceName'] ?? '',
-      quantityProduced: map['quantityProduced']?.toInt() ?? 0,
-      productionDate: DateTime.parse(map['productionDate'] ?? DateTime.now().toIso8601String()),
-      materialsUsed: Map<String, int>.from(map['materialsUsed'] ?? {}),
-      totalCost: map['totalCost']?.toDouble(),
-      batchNumber: map['batchNumber'],
-      notes: map['notes'],
-      status: ProductionStatus.values.firstWhere(
-        (e) => e.name == map['status'], 
-        orElse: () => ProductionStatus.completed,
-      ),
     );
   }
 
   @override
   String toString() {
-    return 'ProductionRecord(device: $deviceName, qty: $quantityProduced, date: ${productionDate.toString().substring(0, 10)})';
+    return 'ProductionRecord(id: $id, device: $deviceName, qty: $quantityProduced, cost: $totalCost)';
   }
-}
 
-enum ProductionStatus {
-  planned,
-  inProgress,
-  completed,
-  cancelled
+  @override
+  bool operator ==(Object other) {
+    if (identical(this, other)) return true;
+    return other is ProductionRecord && other.id == id;
+  }
+
+  @override
+  int get hashCode => id.hashCode;
 }

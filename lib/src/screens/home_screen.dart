@@ -1,397 +1,419 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../constants/app_string.dart';
+import '../providers/materials_providers.dart';
+import '../providers/alert_provider.dart';
+import '../widgets/stock_summary.dart';
+import '../services/login_services.dart';
+import 'materials_list_screen.dart';
+import 'pcb_creation_screen.dart';
+import 'bom_upload_screen.dart';
+import 'device_history_screen.dart';
+import 'alerts_screen.dart';
+import 'login_screen.dart';
 
-class HomeScreen extends StatefulWidget {
-  const HomeScreen({Key? key}) : super(key: key);
-
-  @override
-  State<HomeScreen> createState() => _HomeScreenState();
-}
-
-class _HomeScreenState extends State<HomeScreen> {
-  int _selectedIndex = 0;
-
-  // Sample data for dashboard - will be replaced with real data later
-  final int _totalMaterials = 1245;
-  final int _lowStockItems = 8;
-  final int _totalDevices = 47;
-  final int _recentProductions = 12;
-
-  // Navigation items
-  final List<BottomNavigationBarItem> _navItems = [
-    const BottomNavigationBarItem(
-      icon: Icon(Icons.dashboard),
-      label: 'Dashboard',
-    ),
-    const BottomNavigationBarItem(
-      icon: Icon(Icons.inventory),
-      label: 'Materials',
-    ),
-    const BottomNavigationBarItem(
-      icon: Icon(Icons.upload_file),
-      label: 'BOM Upload',
-    ),
-    const BottomNavigationBarItem(icon: Icon(Icons.devices), label: 'Devices'),
-    const BottomNavigationBarItem(
-      icon: Icon(Icons.notifications),
-      label: 'Alerts',
-    ),
-  ];
-
-  void _onNavItemTapped(int index) {
-    setState(() {
-      _selectedIndex = index;
-    });
-
-    // Navigate to respective screens
-    switch (index) {
-      case 0:
-        // Stay on dashboard
-        break;
-      case 1:
-        Navigator.pushNamed(context, '/materials');
-        break;
-      case 2:
-        Navigator.pushNamed(context, '/bom-upload');
-        break;
-      case 3:
-        Navigator.pushNamed(context, '/devices');
-        break;
-      case 4:
-        Navigator.pushNamed(context, '/alerts');
-        break;
-    }
-  }
-
-  void _logout() {
-    showDialog(
-      context: context,
-      builder: (BuildContext context) {
-        return AlertDialog(
-          title: const Text('Logout'),
-          content: const Text('Are you sure you want to logout?'),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text('Cancel'),
-            ),
-            ElevatedButton(
-              onPressed: () {
-                Navigator.pop(context);
-                Navigator.pushReplacementNamed(context, '/login');
-              },
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.red,
-                foregroundColor: Colors.white,
-              ),
-              child: const Text('Logout'),
-            ),
-          ],
-        );
-      },
-    );
-  }
+class HomeScreen extends ConsumerWidget {
+  const HomeScreen({super.key});
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final materialsSummary = ref.watch(materialsSummaryProvider);
+    final lowStockMaterials = ref.watch(lowStockMaterialsProvider);
+
     return Scaffold(
       appBar: AppBar(
-        title: const Text(
-          'Electronics Inventory',
-          style: TextStyle(fontWeight: FontWeight.bold),
-        ),
-        backgroundColor: Colors.blue[600],
-        foregroundColor: Colors.white,
-        elevation: 2,
+        title: const Text(AppStrings.appName),
         actions: [
-          IconButton(
-            icon: const Icon(Icons.refresh),
-            onPressed: () {
-              // Refresh data
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(
-                  content: Text('Data refreshed!'),
-                  duration: Duration(seconds: 1),
+          // Notifications icon with badge
+          Stack(
+            children: [
+              IconButton(
+                icon: const Icon(Icons.notifications),
+                onPressed: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => const AlertsScreen(),
+                    ),
+                  );
+                },
+              ),
+              if (lowStockMaterials.isNotEmpty)
+                Positioned(
+                  right: 8,
+                  top: 8,
+                  child: Container(
+                    padding: const EdgeInsets.all(2),
+                    decoration: BoxDecoration(
+                      color: Colors.red,
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    constraints: const BoxConstraints(
+                      minWidth: 16,
+                      minHeight: 16,
+                    ),
+                    child: Text(
+                      '${lowStockMaterials.length}',
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 10,
+                        fontWeight: FontWeight.bold,
+                      ),
+                      textAlign: TextAlign.center,
+                    ),
+                  ),
                 ),
-              );
-            },
-            tooltip: 'Refresh',
+            ],
           ),
-          IconButton(
-            icon: const Icon(Icons.logout),
-            onPressed: _logout,
-            tooltip: 'Logout',
+          // Logout button
+          PopupMenuButton<String>(
+            onSelected: (value) {
+              if (value == 'logout') {
+                _handleLogout(context);
+              }
+            },
+            itemBuilder: (context) => [
+              const PopupMenuItem(
+                value: 'logout',
+                child: Row(
+                  children: [
+                    Icon(Icons.logout),
+                    SizedBox(width: 8),
+                    Text('Logout'),
+                  ],
+                ),
+              ),
+            ],
           ),
         ],
       ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(16.0),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // Welcome Section
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.all(20),
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  colors: [Colors.blue[600]!, Colors.blue[400]!],
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                ),
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text(
-                    'Welcome Back!',
-                    style: TextStyle(
-                      fontSize: 24,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.white,
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    'Manage your electronics inventory efficiently',
-                    style: TextStyle(
-                      fontSize: 16,
-                      color: Colors.white.withOpacity(0.9),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 24),
+      body: SafeArea(
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.all(16.0),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // Welcome section
+              _buildWelcomeSection(context),
+              const SizedBox(height: 24),
 
-            // Quick Stats Section
-            const Text(
-              'Quick Overview',
-              style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
-            ),
-            const SizedBox(height: 12),
+              // Stock summary
+              StockSummary(summary: materialsSummary),
+              const SizedBox(height: 24),
 
-            // Stats Grid
-            GridView.count(
-              crossAxisCount: 2,
-              shrinkWrap: true,
-              physics: const NeverScrollableScrollPhysics(),
-              crossAxisSpacing: 12,
-              mainAxisSpacing: 12,
-              childAspectRatio: 1.2,
-              children: [
-                _buildStatCard(
-                  title: 'Total Materials',
-                  value: _totalMaterials.toString(),
-                  icon: Icons.inventory_2,
-                  color: Colors.green,
-                  onTap: () => Navigator.pushNamed(context, '/materials'),
-                ),
-                _buildStatCard(
-                  title: 'Low Stock Alert',
-                  value: _lowStockItems.toString(),
-                  icon: Icons.warning,
-                  color: Colors.orange,
-                  onTap: () => Navigator.pushNamed(context, '/alerts'),
-                ),
-                _buildStatCard(
-                  title: 'Total Devices',
-                  value: _totalDevices.toString(),
-                  icon: Icons.devices,
-                  color: Colors.blue,
-                  onTap: () => Navigator.pushNamed(context, '/devices'),
-                ),
-                _buildStatCard(
-                  title: 'Recent Productions',
-                  value: _recentProductions.toString(),
-                  icon: Icons.build,
-                  color: Colors.purple,
-                  onTap: () => Navigator.pushNamed(context, '/devices'),
-                ),
+              // Quick actions grid
+              _buildQuickActions(context),
+              const SizedBox(height: 24),
+
+              // Recent alerts section
+              if (lowStockMaterials.isNotEmpty) ...[
+                _buildAlertsSection(context, lowStockMaterials),
+                const SizedBox(height: 16),
               ],
-            ),
-            const SizedBox(height: 24),
-
-            // Quick Actions Section
-            const Text(
-              'Quick Actions',
-              style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
-            ),
-            const SizedBox(height: 12),
-
-            // Action Buttons
-            Column(
-              children: [
-                _buildActionButton(
-                  title: 'Import Raw Materials',
-                  subtitle: 'Upload Excel file with material data',
-                  icon: Icons.upload_file,
-                  color: Colors.teal,
-                  onPressed: () => Navigator.pushNamed(context, '/materials'),
-                ),
-                const SizedBox(height: 12),
-                _buildActionButton(
-                  title: 'Upload BOM',
-                  subtitle: 'Add Bill of Materials for PCB components',
-                  icon: Icons.list_alt,
-                  color: Colors.indigo,
-                  onPressed: () => Navigator.pushNamed(context, '/bom-upload'),
-                ),
-                const SizedBox(height: 12),
-                _buildActionButton(
-                  title: 'Create New PCB',
-                  subtitle: 'Design and create new PCB projects',
-                  icon: Icons.add_circle,
-                  color: Colors.green,
-                  onPressed: () =>
-                      Navigator.pushNamed(context, '/pcb-creation'),
-                ),
-                const SizedBox(height: 12),
-                _buildActionButton(
-                  title: 'Check Stock Alerts',
-                  subtitle: 'View materials running low in stock',
-                  icon: Icons.notifications_active,
-                  color: Colors.red,
-                  onPressed: () => Navigator.pushNamed(context, '/alerts'),
-                ),
-              ],
-            ),
-          ],
-        ),
-      ),
-      bottomNavigationBar: BottomNavigationBar(
-        currentIndex: _selectedIndex,
-        onTap: _onNavItemTapped,
-        type: BottomNavigationBarType.fixed,
-        selectedItemColor: Colors.blue[600],
-        unselectedItemColor: Colors.grey[600],
-        items: _navItems,
-      ),
-    );
-  }
-
-  Widget _buildStatCard({
-    required String title,
-    required String value,
-    required IconData icon,
-    required Color color,
-    required VoidCallback onTap,
-  }) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        padding: const EdgeInsets.all(16),
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: Colors.grey[300]!),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.grey.withOpacity(0.1),
-              blurRadius: 4,
-              offset: const Offset(0, 2),
-            ),
-          ],
-        ),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Container(
-              padding: const EdgeInsets.all(8),
-              decoration: BoxDecoration(
-                color: color.withOpacity(0.1),
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: Icon(icon, color: color, size: 24),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              value,
-              style: TextStyle(
-                fontSize: 24,
-                fontWeight: FontWeight.bold,
-                color: color,
-              ),
-            ),
-            const SizedBox(height: 4),
-            Text(
-              title,
-              style: TextStyle(fontSize: 12, color: Colors.grey[600]),
-              textAlign: TextAlign.center,
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );
   }
 
-  Widget _buildActionButton({
+  Widget _buildWelcomeSection(BuildContext context) {
+    final user = LoginService.getCurrentUser();
+    final now = DateTime.now();
+    final hour = now.hour;
+
+    String greeting;
+    if (hour < 12) {
+      greeting = 'Good Morning';
+    } else if (hour < 17) {
+      greeting = 'Good Afternoon';
+    } else {
+      greeting = 'Good Evening';
+    }
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: [
+            Theme.of(context).primaryColor,
+            Theme.of(context).primaryColor.withOpacity(0.8),
+          ],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [
+          BoxShadow(
+            color: Theme.of(context).primaryColor.withOpacity(0.3),
+            blurRadius: 8,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            '$greeting,',
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 18,
+              fontWeight: FontWeight.w400,
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            user?.username ?? 'User',
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 28,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            'Manage your electronics inventory with ease',
+            style: TextStyle(
+              color: Colors.white.withOpacity(0.9),
+              fontSize: 14,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildQuickActions(BuildContext context) {
+    final actions = [
+      {
+        'title': AppStrings.materials,
+        'subtitle': 'Manage raw materials',
+        'icon': Icons.inventory_2,
+        'color': Colors.blue,
+        'onTap': () => Navigator.push(
+          context,
+          MaterialPageRoute(builder: (context) => const MaterialsListScreen()),
+        ),
+      },
+      {
+        'title': AppStrings.pcbCreation,
+        'subtitle': 'Create new devices',
+        'icon': Icons.memory,
+        'color': Colors.green,
+        'onTap': () => Navigator.push(
+          context,
+          MaterialPageRoute(builder: (context) => const PcbCreationScreen()),
+        ),
+      },
+      {
+        'title': AppStrings.bomUpload,
+        'subtitle': 'Upload BOM files',
+        'icon': Icons.upload_file,
+        'color': Colors.orange,
+        'onTap': () => Navigator.push(
+          context,
+          MaterialPageRoute(builder: (context) => const BomUploadScreen()),
+        ),
+      },
+      {
+        'title': AppStrings.deviceHistory,
+        'subtitle': 'Production history',
+        'icon': Icons.history,
+        'color': Colors.purple,
+        'onTap': () => Navigator.push(
+          context,
+          MaterialPageRoute(builder: (context) => const DeviceHistoryScreen()),
+        ),
+      },
+      {
+        'title': AppStrings.alerts,
+        'subtitle': 'Stock alerts',
+        'icon': Icons.warning_amber,
+        'color': Colors.red,
+        'onTap': () => Navigator.push(
+          context,
+          MaterialPageRoute(builder: (context) => const AlertsScreen()),
+        ),
+      },
+    ];
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          'Quick Actions',
+          style: Theme.of(
+            context,
+          ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold),
+        ),
+        const SizedBox(height: 16),
+        GridView.builder(
+          shrinkWrap: true,
+          physics: const NeverScrollableScrollPhysics(),
+          gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+            crossAxisCount: 2,
+            crossAxisSpacing: 16,
+            mainAxisSpacing: 16,
+            childAspectRatio: 1.2,
+          ),
+          itemCount: actions.length,
+          itemBuilder: (context, index) {
+            final action = actions[index];
+            return _buildActionCard(
+              context,
+              title: action['title'] as String,
+              subtitle: action['subtitle'] as String,
+              icon: action['icon'] as IconData,
+              color: action['color'] as Color,
+              onTap: action['onTap'] as VoidCallback,
+            );
+          },
+        ),
+      ],
+    );
+  }
+
+  Widget _buildActionCard(
+    BuildContext context, {
     required String title,
     required String subtitle,
     required IconData icon,
     required Color color,
-    required VoidCallback onPressed,
+    required VoidCallback onTap,
   }) {
-    return Container(
-      width: double.infinity,
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: Colors.grey[300]!),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.grey.withOpacity(0.1),
-            blurRadius: 4,
-            offset: const Offset(0, 2),
-          ),
-        ],
-      ),
-      child: Material(
-        color: Colors.transparent,
-        child: InkWell(
-          onTap: onPressed,
-          borderRadius: BorderRadius.circular(12),
-          child: Padding(
-            padding: const EdgeInsets.all(16),
-            child: Row(
-              children: [
-                Container(
-                  padding: const EdgeInsets.all(12),
-                  decoration: BoxDecoration(
-                    color: color.withOpacity(0.1),
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: Icon(icon, color: color, size: 24),
+    return Card(
+      elevation: 4,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(16),
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Container(
+                width: 50,
+                height: 50,
+                decoration: BoxDecoration(
+                  color: color.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(12),
                 ),
-                const SizedBox(width: 16),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        title,
-                        style: const TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                      const SizedBox(height: 4),
-                      Text(
-                        subtitle,
-                        style: TextStyle(fontSize: 12, color: Colors.grey[600]),
-                      ),
-                    ],
-                  ),
+                child: Icon(icon, color: color, size: 28),
+              ),
+              const SizedBox(height: 12),
+              Text(
+                title,
+                style: const TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.bold,
                 ),
-                Icon(
-                  Icons.arrow_forward_ios,
-                  size: 16,
-                  color: Colors.grey[400],
-                ),
-              ],
-            ),
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 4),
+              Text(
+                subtitle,
+                style: TextStyle(fontSize: 12, color: Colors.grey[600]),
+                textAlign: TextAlign.center,
+              ),
+            ],
           ),
         ),
+      ),
+    );
+  }
+
+  Widget _buildAlertsSection(
+    BuildContext context,
+    List<dynamic> lowStockMaterials,
+  ) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Text(
+              'Stock Alerts',
+              style: Theme.of(
+                context,
+              ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold),
+            ),
+            TextButton(
+              onPressed: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (context) => const AlertsScreen()),
+                );
+              },
+              child: const Text('View All'),
+            ),
+          ],
+        ),
+        const SizedBox(height: 8),
+        Container(
+          width: double.infinity,
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: Colors.red[50],
+            border: Border.all(color: Colors.red[200]!),
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: Row(
+            children: [
+              Icon(Icons.warning_amber, color: Colors.red[600], size: 24),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      '${lowStockMaterials.length} materials need attention',
+                      style: TextStyle(
+                        fontWeight: FontWeight.bold,
+                        color: Colors.red[700],
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      'Low stock or out of stock materials detected',
+                      style: TextStyle(fontSize: 12, color: Colors.red[600]),
+                    ),
+                  ],
+                ),
+              ),
+              Icon(Icons.arrow_forward_ios, color: Colors.red[600], size: 16),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  void _handleLogout(BuildContext context) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Logout'),
+        content: const Text('Are you sure you want to logout?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () {
+              LoginService.logout();
+              Navigator.of(context).pushAndRemoveUntil(
+                MaterialPageRoute(builder: (context) => const LoginScreen()),
+                (route) => false,
+              );
+            },
+            child: const Text('Logout'),
+          ),
+        ],
       ),
     );
   }

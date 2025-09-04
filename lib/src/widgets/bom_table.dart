@@ -1,325 +1,428 @@
 import 'package:flutter/material.dart';
+import '../models/bom.dart';
 
-class MaterialCard extends StatefulWidget {
-  final String materialName;
-  final String reference;
-  final int totalQuantity;
-  final int remainingQuantity;
-  final int usedQuantity;
-  final String? footprint;
-  final bool isLowStock;
-  final VoidCallback? onEdit;
-  final Function(int)? onQuantityUpdate;
+class BomTable extends StatelessWidget {
+  final List<BOMItem> bomItems;
+  final Function(int, BOMItem)? onItemEdit;
+  final Function(int)? onItemDelete;
+  final bool isEditable;
 
-  const MaterialCard({
-    Key? key,
-    required this.materialName,
-    required this.reference,
-    required this.totalQuantity,
-    required this.remainingQuantity,
-    required this.usedQuantity,
-    this.footprint,
-    this.isLowStock = false,
-    this.onEdit,
-    this.onQuantityUpdate,
-  }) : super(key: key);
+  const BomTable({
+    super.key,
+    required this.bomItems,
+    this.onItemEdit,
+    this.onItemDelete,
+    this.isEditable = true,
+  });
 
   @override
-  State<MaterialCard> createState() => _MaterialCardState();
-}
-
-class _MaterialCardState extends State<MaterialCard> {
-  final TextEditingController _quantityController = TextEditingController();
-  bool _isEditing = false;
-
-  @override
-  void initState() {
-    super.initState();
-    _quantityController.text = widget.remainingQuantity.toString();
-  }
-
-  @override
-  void dispose() {
-    _quantityController.dispose();
-    super.dispose();
-  }
-
-  void _startEditing() {
-    setState(() {
-      _isEditing = true;
-      _quantityController.text = widget.remainingQuantity.toString();
-      _quantityController.selection = TextSelection.fromPosition(
-        TextPosition(offset: _quantityController.text.length),
+  Widget build(BuildContext context) {
+    if (bomItems.isEmpty) {
+      return Container(
+        padding: const EdgeInsets.all(24),
+        decoration: BoxDecoration(
+          border: Border.all(color: Colors.grey[300]!),
+          borderRadius: BorderRadius.circular(8),
+        ),
+        child: const Center(child: Text('No BOM items to display')),
       );
-    });
-  }
+    }
 
-  void _saveQuantity() {
-    final newQuantity =
-        int.tryParse(_quantityController.text) ?? widget.remainingQuantity;
-    widget.onQuantityUpdate?.call(newQuantity);
-    setState(() {
-      _isEditing = false;
-    });
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('Stock updated successfully!'),
-        backgroundColor: Colors.green,
-        duration: Duration(seconds: 2),
+    return SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      child: Container(
+        decoration: BoxDecoration(
+          border: Border.all(color: Colors.grey[300]!),
+          borderRadius: BorderRadius.circular(8),
+        ),
+        child: DataTable(
+          columnSpacing: 16,
+          headingRowColor: MaterialStateProperty.all(Colors.grey[100]),
+          columns: const [
+            DataColumn(
+              label: Text(
+                'Sr.No',
+                style: TextStyle(fontWeight: FontWeight.bold),
+              ),
+            ),
+            DataColumn(
+              label: Text(
+                'Reference',
+                style: TextStyle(fontWeight: FontWeight.bold),
+              ),
+            ),
+            DataColumn(
+              label: Text(
+                'Value',
+                style: TextStyle(fontWeight: FontWeight.bold),
+              ),
+            ),
+            DataColumn(
+              label: Text(
+                'Footprint',
+                style: TextStyle(fontWeight: FontWeight.bold),
+              ),
+            ),
+            DataColumn(
+              label: Text('Qty', style: TextStyle(fontWeight: FontWeight.bold)),
+            ),
+            DataColumn(
+              label: Text(
+                'Layer',
+                style: TextStyle(fontWeight: FontWeight.bold),
+              ),
+            ),
+            DataColumn(
+              label: Text(
+                'Actions',
+                style: TextStyle(fontWeight: FontWeight.bold),
+              ),
+            ),
+          ],
+          rows: bomItems.asMap().entries.map((entry) {
+            int index = entry.key;
+            BOMItem item = entry.value;
+            return _buildDataRow(context, index, item);
+          }).toList(),
+        ),
       ),
     );
   }
 
-  void _cancelEditing() {
-    setState(() {
-      _isEditing = false;
-      _quantityController.text = widget.remainingQuantity.toString();
-    });
+  DataRow _buildDataRow(BuildContext context, int index, BOMItem item) {
+    return DataRow(
+      cells: [
+        DataCell(Text(item.serialNumber.toString())),
+        DataCell(
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+            decoration: BoxDecoration(
+              color: Colors.blue[50],
+              borderRadius: BorderRadius.circular(4),
+            ),
+            child: Text(
+              item.reference,
+              style: TextStyle(
+                fontWeight: FontWeight.w500,
+                color: Colors.blue[700],
+              ),
+            ),
+          ),
+        ),
+        DataCell(
+          Container(
+            constraints: const BoxConstraints(maxWidth: 150),
+            child: Text(
+              item.value,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(fontWeight: FontWeight.w500),
+            ),
+          ),
+        ),
+        DataCell(
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+            decoration: BoxDecoration(
+              color: Colors.grey[200],
+              borderRadius: BorderRadius.circular(4),
+            ),
+            child: Text(item.footprint, style: const TextStyle(fontSize: 11)),
+          ),
+        ),
+        DataCell(
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+            decoration: BoxDecoration(
+              color: Colors.green[50],
+              borderRadius: BorderRadius.circular(4),
+            ),
+            child: Text(
+              item.quantity.toString(),
+              style: TextStyle(
+                fontWeight: FontWeight.bold,
+                color: Colors.green[700],
+              ),
+            ),
+          ),
+        ),
+        DataCell(
+          Chip(
+            label: Text(
+              item.layer.toUpperCase(),
+              style: const TextStyle(fontSize: 10),
+            ),
+            backgroundColor: item.layer.toLowerCase() == 'top'
+                ? Colors.orange[100]
+                : Colors.purple[100],
+            labelStyle: TextStyle(
+              color: item.layer.toLowerCase() == 'top'
+                  ? Colors.orange[700]
+                  : Colors.purple[700],
+            ),
+          ),
+        ),
+        DataCell(
+          isEditable
+              ? Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    if (onItemEdit != null)
+                      IconButton(
+                        icon: const Icon(Icons.edit, size: 16),
+                        onPressed: () => _showEditDialog(context, index, item),
+                        tooltip: 'Edit',
+                        constraints: const BoxConstraints(
+                          minWidth: 32,
+                          minHeight: 32,
+                        ),
+                        padding: const EdgeInsets.all(4),
+                      ),
+                    if (onItemDelete != null)
+                      IconButton(
+                        icon: Icon(
+                          Icons.delete,
+                          size: 16,
+                          color: Colors.red[600],
+                        ),
+                        onPressed: () =>
+                            _showDeleteDialog(context, index, item),
+                        tooltip: 'Delete',
+                        constraints: const BoxConstraints(
+                          minWidth: 32,
+                          minHeight: 32,
+                        ),
+                        padding: const EdgeInsets.all(4),
+                      ),
+                  ],
+                )
+              : const SizedBox(),
+        ),
+      ],
+    );
   }
+
+  void _showEditDialog(BuildContext context, int index, BOMItem item) {
+    final serialController = TextEditingController(
+      text: item.serialNumber.toString(),
+    );
+    final referenceController = TextEditingController(text: item.reference);
+    final valueController = TextEditingController(text: item.value);
+    final footprintController = TextEditingController(text: item.footprint);
+    final quantityController = TextEditingController(
+      text: item.quantity.toString(),
+    );
+    String selectedLayer = item.layer;
+
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Edit BOM Item'),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextFormField(
+                controller: serialController,
+                decoration: const InputDecoration(labelText: 'Serial Number'),
+                keyboardType: TextInputType.number,
+              ),
+              const SizedBox(height: 12),
+              TextFormField(
+                controller: referenceController,
+                decoration: const InputDecoration(labelText: 'Reference'),
+              ),
+              const SizedBox(height: 12),
+              TextFormField(
+                controller: valueController,
+                decoration: const InputDecoration(
+                  labelText: 'Value (Material Name)',
+                ),
+              ),
+              const SizedBox(height: 12),
+              TextFormField(
+                controller: footprintController,
+                decoration: const InputDecoration(labelText: 'Footprint'),
+              ),
+              const SizedBox(height: 12),
+              TextFormField(
+                controller: quantityController,
+                decoration: const InputDecoration(labelText: 'Quantity'),
+                keyboardType: TextInputType.number,
+              ),
+              const SizedBox(height: 12),
+              DropdownButtonFormField<String>(
+                value: selectedLayer,
+                decoration: const InputDecoration(labelText: 'Layer'),
+                items: const [
+                  DropdownMenuItem(value: 'top', child: Text('Top')),
+                  DropdownMenuItem(value: 'bottom', child: Text('Bottom')),
+                ],
+                onChanged: (value) {
+                  if (value != null) {
+                    selectedLayer = value;
+                  }
+                },
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              final updatedItem = item.copyWith(
+                serialNumber:
+                    int.tryParse(serialController.text) ?? item.serialNumber,
+                reference: referenceController.text.trim(),
+                value: valueController.text.trim(),
+                footprint: footprintController.text.trim(),
+                quantity:
+                    int.tryParse(quantityController.text) ?? item.quantity,
+                layer: selectedLayer,
+              );
+
+              onItemEdit?.call(index, updatedItem);
+              Navigator.of(context).pop();
+            },
+            child: const Text('Save'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showDeleteDialog(BuildContext context, int index, BOMItem item) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Delete BOM Item'),
+        content: Text(
+          'Are you sure you want to delete "${item.reference} - ${item.value}"?',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              onItemDelete?.call(index);
+              Navigator.of(context).pop();
+            },
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class BomSummaryCard extends StatelessWidget {
+  final BOM bom;
+
+  const BomSummaryCard({super.key, required this.bom});
 
   @override
   Widget build(BuildContext context) {
     return Card(
-      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-      elevation: 2,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(12),
-        side: widget.isLowStock
-            ? const BorderSide(color: Colors.red, width: 2)
-            : BorderSide.none,
-      ),
       child: Padding(
         padding: const EdgeInsets.all(16),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Header with material name and low stock indicator
-            Row(
-              children: [
-                Expanded(
-                  child: Text(
-                    widget.materialName,
-                    style: const TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                ),
-                if (widget.isLowStock)
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 8,
-                      vertical: 4,
-                    ),
-                    decoration: BoxDecoration(
-                      color: Colors.red,
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: const Text(
-                      'LOW STOCK',
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontSize: 10,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                  ),
-              ],
-            ),
-            const SizedBox(height: 8),
-
-            // Reference
             Text(
-              'Ref: ${widget.reference}',
-              style: TextStyle(
-                fontSize: 14,
-                color: Colors.grey[600],
-                fontWeight: FontWeight.w500,
-              ),
+              'BOM Summary',
+              style: Theme.of(
+                context,
+              ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
             ),
-
-            if (widget.footprint != null) ...[
-              const SizedBox(height: 4),
-              Text(
-                'Footprint: ${widget.footprint}',
-                style: TextStyle(fontSize: 14, color: Colors.grey[600]),
-              ),
-            ],
-
-            const SizedBox(height: 16),
-
-            // Quantity Information
-            Row(
-              children: [
-                // Total Quantity
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        'Total',
-                        style: TextStyle(fontSize: 12, color: Colors.grey[600]),
-                      ),
-                      Text(
-                        widget.totalQuantity.toString(),
-                        style: const TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-
-                // Used Quantity
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        'Used',
-                        style: TextStyle(fontSize: 12, color: Colors.grey[600]),
-                      ),
-                      Text(
-                        widget.usedQuantity.toString(),
-                        style: const TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.bold,
-                          color: Colors.orange,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-
-                // Remaining Quantity (Editable)
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        'Remaining',
-                        style: TextStyle(fontSize: 12, color: Colors.grey[600]),
-                      ),
-                      if (_isEditing) ...[
-                        Row(
-                          children: [
-                            Expanded(
-                              child: TextField(
-                                controller: _quantityController,
-                                keyboardType: TextInputType.number,
-                                style: const TextStyle(
-                                  fontSize: 16,
-                                  fontWeight: FontWeight.bold,
-                                ),
-                                decoration: const InputDecoration(
-                                  border: OutlineInputBorder(),
-                                  contentPadding: EdgeInsets.symmetric(
-                                    horizontal: 8,
-                                    vertical: 4,
-                                  ),
-                                  isDense: true,
-                                ),
-                                autofocus: true,
-                                onSubmitted: (_) => _saveQuantity(),
-                              ),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 8),
-                        Row(
-                          children: [
-                            IconButton(
-                              onPressed: _saveQuantity,
-                              icon: const Icon(
-                                Icons.check,
-                                color: Colors.green,
-                              ),
-                              iconSize: 20,
-                              padding: EdgeInsets.zero,
-                              constraints: const BoxConstraints(),
-                            ),
-                            const SizedBox(width: 8),
-                            IconButton(
-                              onPressed: _cancelEditing,
-                              icon: const Icon(Icons.close, color: Colors.red),
-                              iconSize: 20,
-                              padding: EdgeInsets.zero,
-                              constraints: const BoxConstraints(),
-                            ),
-                          ],
-                        ),
-                      ] else ...[
-                        GestureDetector(
-                          onTap: _startEditing,
-                          child: Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 8,
-                              vertical: 4,
-                            ),
-                            decoration: BoxDecoration(
-                              color: widget.isLowStock
-                                  ? Colors.red[50]
-                                  : Colors.blue[50],
-                              borderRadius: BorderRadius.circular(4),
-                              border: Border.all(
-                                color: widget.isLowStock
-                                    ? Colors.red
-                                    : Colors.blue,
-                                width: 1,
-                              ),
-                            ),
-                            child: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Text(
-                                  widget.remainingQuantity.toString(),
-                                  style: TextStyle(
-                                    fontSize: 16,
-                                    fontWeight: FontWeight.bold,
-                                    color: widget.isLowStock
-                                        ? Colors.red
-                                        : Colors.blue,
-                                  ),
-                                ),
-                                const SizedBox(width: 4),
-                                Icon(
-                                  Icons.edit,
-                                  size: 14,
-                                  color: widget.isLowStock
-                                      ? Colors.red
-                                      : Colors.blue,
-                                ),
-                              ],
-                            ),
-                          ),
-                        ),
-                      ],
-                    ],
-                  ),
-                ),
-              ],
-            ),
-
-            // Progress Bar
             const SizedBox(height: 12),
-            LinearProgressIndicator(
-              value: widget.totalQuantity > 0
-                  ? (widget.totalQuantity - widget.remainingQuantity) /
-                        widget.totalQuantity
-                  : 0,
-              backgroundColor: Colors.grey[300],
-              valueColor: AlwaysStoppedAnimation<Color>(
-                widget.isLowStock ? Colors.red : Colors.green,
-              ),
+
+            Row(
+              children: [
+                Expanded(
+                  child: _buildSummaryItem(
+                    'Total Components',
+                    bom.totalComponents.toString(),
+                    Icons.inventory,
+                    Colors.blue,
+                  ),
+                ),
+                Expanded(
+                  child: _buildSummaryItem(
+                    'Unique Parts',
+                    bom.uniqueComponents.toString(),
+                    Icons.category,
+                    Colors.green,
+                  ),
+                ),
+              ],
             ),
-            const SizedBox(height: 4),
-            Text(
-              '${((widget.totalQuantity - widget.remainingQuantity) / (widget.totalQuantity > 0 ? widget.totalQuantity : 1) * 100).toStringAsFixed(1)}% used',
-              style: TextStyle(fontSize: 12, color: Colors.grey[600]),
+            const SizedBox(height: 12),
+
+            Row(
+              children: [
+                Expanded(
+                  child: _buildSummaryItem(
+                    'Top Layer',
+                    bom.getComponentsByLayer('top').length.toString(),
+                    Icons.layers,
+                    Colors.orange,
+                  ),
+                ),
+                Expanded(
+                  child: _buildSummaryItem(
+                    'Bottom Layer',
+                    bom.getComponentsByLayer('bottom').length.toString(),
+                    Icons.layers,
+                    Colors.purple,
+                  ),
+                ),
+              ],
             ),
           ],
         ),
+      ),
+    );
+  }
+
+  Widget _buildSummaryItem(
+    String title,
+    String value,
+    IconData icon,
+    Color color,
+  ) {
+    return Container(
+      padding: const EdgeInsets.all(12),
+      margin: const EdgeInsets.only(right: 8),
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.1),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: color.withOpacity(0.3)),
+      ),
+      child: Column(
+        children: [
+          Icon(icon, color: color, size: 20),
+          const SizedBox(height: 4),
+          Text(
+            value,
+            style: TextStyle(
+              fontSize: 18,
+              fontWeight: FontWeight.bold,
+              color: color,
+            ),
+          ),
+          const SizedBox(height: 2),
+          Text(
+            title,
+            style: TextStyle(fontSize: 10, color: color),
+            textAlign: TextAlign.center,
+          ),
+        ],
       ),
     );
   }

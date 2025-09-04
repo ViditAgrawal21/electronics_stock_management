@@ -1,22 +1,24 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../constants/app_string.dart';
+import '../constants/app_config.dart';
+import '../widgets/custom_button.dart';
+import '../services/login_services.dart';
+import 'home_screen.dart';
 
-class LoginScreen extends StatefulWidget {
-  const LoginScreen({Key? key}) : super(key: key);
+class LoginScreen extends ConsumerStatefulWidget {
+  const LoginScreen({super.key});
 
   @override
-  State<LoginScreen> createState() => _LoginScreenState();
+  ConsumerState<LoginScreen> createState() => _LoginScreenState();
 }
 
-class _LoginScreenState extends State<LoginScreen> {
-  final _formKey = GlobalKey<FormState>();
-  final _usernameController = TextEditingController();
-  final _passwordController = TextEditingController();
+class _LoginScreenState extends ConsumerState<LoginScreen> {
+  final TextEditingController _usernameController = TextEditingController();
+  final TextEditingController _passwordController = TextEditingController();
+  final GlobalKey<FormState> _formKey = GlobalKey<FormState>();
   bool _isLoading = false;
   bool _obscurePassword = true;
-
-  // Hardcoded credentials as per requirement
-  static const String _validUsername = 'TWAIPL';
-  static const String _validPassword = '1234';
 
   @override
   void dispose() {
@@ -32,35 +34,44 @@ class _LoginScreenState extends State<LoginScreen> {
       _isLoading = true;
     });
 
-    // Simulate loading time for better UX
-    await Future.delayed(const Duration(milliseconds: 800));
+    try {
+      String username = _usernameController.text.trim();
+      String password = _passwordController.text.trim();
 
-    final username = _usernameController.text.trim();
-    final password = _passwordController.text.trim();
+      bool loginSuccess = await LoginService.authenticate(username, password);
 
-    if (username == _validUsername && password == _validPassword) {
-      // Success - Navigate to home screen
-      if (mounted) {
-        Navigator.pushReplacementNamed(context, '/home');
-        _showSnackBar('Login Successful!', Colors.green);
+      if (loginSuccess && mounted) {
+        Navigator.of(context).pushReplacement(
+          MaterialPageRoute(builder: (context) => const HomeScreen()),
+        );
+      } else if (mounted) {
+        _showErrorDialog(AppStrings.loginFailed);
       }
-    } else {
-      // Show error
-      _showSnackBar('Invalid username or password', Colors.red);
+    } catch (e) {
+      if (mounted) {
+        _showErrorDialog('${AppStrings.error}: $e');
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
+      }
     }
-
-    setState(() {
-      _isLoading = false;
-    });
   }
 
-  void _showSnackBar(String message, Color color) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
+  void _showErrorDialog(String message) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text(AppStrings.error),
         content: Text(message),
-        backgroundColor: color,
-        duration: const Duration(seconds: 2),
-        behavior: SnackBarBehavior.floating,
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('OK'),
+          ),
+        ],
       ),
     );
   }
@@ -68,187 +79,180 @@ class _LoginScreenState extends State<LoginScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.grey[50],
-      body: SafeArea(
-        child: Center(
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.all(24.0),
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                // App Logo/Title
-                Container(
-                  padding: const EdgeInsets.all(16),
-                  decoration: BoxDecoration(
-                    color: Colors.blue[600],
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: const Icon(
-                    Icons.inventory_2,
-                    size: 48,
-                    color: Colors.white,
-                  ),
+      body: Container(
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: [
+              Theme.of(context).primaryColor.withOpacity(0.8),
+              Theme.of(context).primaryColor,
+            ],
+          ),
+        ),
+        child: SafeArea(
+          child: Center(
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.all(24.0),
+              child: Card(
+                elevation: 8,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(16),
                 ),
-                const SizedBox(height: 24),
-
-                // App Title
-                Text(
-                  'Electronics Inventory',
-                  style: Theme.of(context).textTheme.headlineMedium?.copyWith(
-                    fontWeight: FontWeight.bold,
-                    color: Colors.grey[800],
-                  ),
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  'Stock Management System',
-                  style: Theme.of(
-                    context,
-                  ).textTheme.bodyLarge?.copyWith(color: Colors.grey[600]),
-                ),
-                const SizedBox(height: 48),
-
-                // Login Form
-                Card(
-                  elevation: 8,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(16),
-                  ),
-                  child: Padding(
-                    padding: const EdgeInsets.all(24.0),
-                    child: Form(
-                      key: _formKey,
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.stretch,
-                        children: [
-                          // Username Field
-                          TextFormField(
-                            controller: _usernameController,
-                            decoration: InputDecoration(
-                              labelText: 'Username',
-                              prefixIcon: const Icon(Icons.person),
-                              border: OutlineInputBorder(
-                                borderRadius: BorderRadius.circular(8),
-                              ),
-                              filled: true,
-                              fillColor: Colors.grey[50],
-                            ),
-                            validator: (value) {
-                              if (value == null || value.isEmpty) {
-                                return 'Please enter username';
-                              }
-                              return null;
-                            },
-                            textInputAction: TextInputAction.next,
+                child: Padding(
+                  padding: const EdgeInsets.all(32.0),
+                  child: Form(
+                    key: _formKey,
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        // App Icon/Logo
+                        Container(
+                          width: 80,
+                          height: 80,
+                          decoration: BoxDecoration(
+                            color: Theme.of(
+                              context,
+                            ).primaryColor.withOpacity(0.1),
+                            shape: BoxShape.circle,
                           ),
-                          const SizedBox(height: 16),
+                          child: Icon(
+                            Icons.inventory_2,
+                            size: 40,
+                            color: Theme.of(context).primaryColor,
+                          ),
+                        ),
+                        const SizedBox(height: 24),
 
-                          // Password Field
-                          TextFormField(
-                            controller: _passwordController,
-                            obscureText: _obscurePassword,
-                            decoration: InputDecoration(
-                              labelText: 'Password',
-                              prefixIcon: const Icon(Icons.lock),
-                              suffixIcon: IconButton(
-                                icon: Icon(
-                                  _obscurePassword
-                                      ? Icons.visibility
-                                      : Icons.visibility_off,
+                        // App Title
+                        Text(
+                          AppStrings.appName,
+                          style: Theme.of(context).textTheme.headlineSmall
+                              ?.copyWith(
+                                fontWeight: FontWeight.bold,
+                                color: Theme.of(context).primaryColor,
+                              ),
+                        ),
+                        const SizedBox(height: 8),
+
+                        // Login Title
+                        Text(
+                          AppStrings.loginTitle,
+                          style: Theme.of(context).textTheme.titleMedium
+                              ?.copyWith(color: Colors.grey[600]),
+                        ),
+                        const SizedBox(height: 32),
+
+                        // Username Field
+                        TextFormField(
+                          controller: _usernameController,
+                          decoration: InputDecoration(
+                            labelText: AppStrings.username,
+                            prefixIcon: const Icon(Icons.person),
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            filled: true,
+                            fillColor: Colors.grey[50],
+                          ),
+                          validator: (value) {
+                            if (value == null || value.trim().isEmpty) {
+                              return 'Please enter username';
+                            }
+                            return null;
+                          },
+                          textInputAction: TextInputAction.next,
+                        ),
+                        const SizedBox(height: 16),
+
+                        // Password Field
+                        TextFormField(
+                          controller: _passwordController,
+                          obscureText: _obscurePassword,
+                          decoration: InputDecoration(
+                            labelText: AppStrings.password,
+                            prefixIcon: const Icon(Icons.lock),
+                            suffixIcon: IconButton(
+                              icon: Icon(
+                                _obscurePassword
+                                    ? Icons.visibility
+                                    : Icons.visibility_off,
+                              ),
+                              onPressed: () {
+                                setState(() {
+                                  _obscurePassword = !_obscurePassword;
+                                });
+                              },
+                            ),
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            filled: true,
+                            fillColor: Colors.grey[50],
+                          ),
+                          validator: (value) {
+                            if (value == null || value.trim().isEmpty) {
+                              return 'Please enter password';
+                            }
+                            return null;
+                          },
+                          textInputAction: TextInputAction.done,
+                          onFieldSubmitted: (_) => _handleLogin(),
+                        ),
+                        const SizedBox(height: 24),
+
+                        // Login Button
+                        SizedBox(
+                          width: double.infinity,
+                          child: CustomButton(
+                            text: AppStrings.login,
+                            onPressed: _isLoading ? null : _handleLogin,
+                            isLoading: _isLoading,
+                          ),
+                        ),
+                        const SizedBox(height: 16),
+
+                        // Demo Credentials Info
+                        Container(
+                          padding: const EdgeInsets.all(12),
+                          decoration: BoxDecoration(
+                            color: Colors.blue[50],
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border.all(color: Colors.blue[200]!),
+                          ),
+                          child: Column(
+                            children: [
+                              Icon(
+                                Icons.info_outline,
+                                color: Colors.blue[700],
+                                size: 20,
+                              ),
+                              const SizedBox(height: 4),
+                              Text(
+                                'Demo Credentials',
+                                style: TextStyle(
+                                  fontWeight: FontWeight.bold,
+                                  color: Colors.blue[700],
                                 ),
-                                onPressed: () {
-                                  setState(() {
-                                    _obscurePassword = !_obscurePassword;
-                                  });
-                                },
                               ),
-                              border: OutlineInputBorder(
-                                borderRadius: BorderRadius.circular(8),
-                              ),
-                              filled: true,
-                              fillColor: Colors.grey[50],
-                            ),
-                            validator: (value) {
-                              if (value == null || value.isEmpty) {
-                                return 'Please enter password';
-                              }
-                              return null;
-                            },
-                            textInputAction: TextInputAction.done,
-                            onFieldSubmitted: (_) => _handleLogin(),
-                          ),
-                          const SizedBox(height: 24),
-
-                          // Login Button
-                          SizedBox(
-                            height: 50,
-                            child: ElevatedButton(
-                              onPressed: _isLoading ? null : _handleLogin,
-                              style: ElevatedButton.styleFrom(
-                                backgroundColor: Colors.blue[600],
-                                foregroundColor: Colors.white,
-                                shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(8),
+                              const SizedBox(height: 4),
+                              Text(
+                                'Username: ${AppConfig.defaultUsername}\nPassword: ${AppConfig.defaultPassword}',
+                                textAlign: TextAlign.center,
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  color: Colors.blue[600],
+                                  fontFamily: 'monospace',
                                 ),
                               ),
-                              child: _isLoading
-                                  ? const SizedBox(
-                                      height: 20,
-                                      width: 20,
-                                      child: CircularProgressIndicator(
-                                        strokeWidth: 2,
-                                        valueColor:
-                                            AlwaysStoppedAnimation<Color>(
-                                              Colors.white,
-                                            ),
-                                      ),
-                                    )
-                                  : const Text(
-                                      'LOGIN',
-                                      style: TextStyle(
-                                        fontSize: 16,
-                                        fontWeight: FontWeight.bold,
-                                      ),
-                                    ),
-                            ),
+                            ],
                           ),
-                        ],
-                      ),
+                        ),
+                      ],
                     ),
                   ),
                 ),
-
-                const SizedBox(height: 24),
-
-                // Help Text
-                Container(
-                  padding: const EdgeInsets.all(12),
-                  decoration: BoxDecoration(
-                    color: Colors.blue[50],
-                    borderRadius: BorderRadius.circular(8),
-                    border: Border.all(color: Colors.blue[200]!),
-                  ),
-                  child: Row(
-                    children: [
-                      Icon(
-                        Icons.info_outline,
-                        color: Colors.blue[600],
-                        size: 20,
-                      ),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: Text(
-                          'Use company credentials to access the system',
-                          style: TextStyle(
-                            color: Colors.blue[700],
-                            fontSize: 12,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
+              ),
             ),
           ),
         ),

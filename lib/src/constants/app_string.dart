@@ -1,152 +1,97 @@
-class AppConfig {
-  // App Information
-  static const String appName = 'Electronics Inventory Manager';
+class AppStrings {
+  // App Info
+  static const String appName = 'Electronics Stock Manager';
   static const String appVersion = '1.0.0';
-  static const String companyName = 'TWAIPL';
 
-  // Authentication Configuration
-  static const String defaultUsername = 'TWAIPL';
-  static const String defaultPassword = '1234';
+  // Authentication
+  static const String loginTitle = 'Login to Stock Manager';
+  static const String username = 'Username';
+  static const String password = 'Password';
+  static const String login = 'Login';
+  static const String loginFailed = 'Invalid credentials. Please try again.';
 
-  // Stock Management Configuration
-  static const int lowStockThreshold = 10;
-  static const int criticalStockThreshold = 5;
-  static const int maxSearchResults = 100;
+  // Navigation
+  static const String home = 'Home';
+  static const String materials = 'Materials';
+  static const String pcbCreation = 'PCB Creation';
+  static const String bomUpload = 'BOM Upload';
+  static const String deviceHistory = 'Device History';
+  static const String alerts = 'Alerts';
 
-  // Excel Configuration
-  static const List<String> supportedExcelFormats = ['.xlsx', '.xls'];
-  static const int maxExcelFileSize = 10 * 1024 * 1024; // 10MB in bytes
+  // Materials Screen
+  static const String materialsTitle = 'Raw Materials';
+  static const String importExcel = 'Import Excel';
+  static const String exportExcel = 'Export Excel';
+  static const String searchMaterials = 'Search materials...';
+  static const String filterMaterials = 'Filter';
+  static const String sortMaterials = 'Sort';
+  static const String totalMaterials = 'Total Materials';
+  static const String lowStockItems = 'Low Stock Items';
+  static const String outOfStockItems = 'Out of Stock Items';
 
-  // BOM Configuration
-  static const List<String> bomColumns = [
-    'sr.no',
-    'reference',
-    'value',
-    'footprint',
-    'qty',
-    'top/bottom',
-  ];
+  // PCB Creation
+  static const String pcbCreationTitle = 'PCB Creation';
+  static const String deviceName = 'Device Name';
+  static const String subComponents = 'Sub Components';
+  static const String pcbBoards = 'PCB Boards';
+  static const String addComponent = 'Add Component';
+  static const String addPcbBoard = 'Add PCB Board';
+  static const String createDevice = 'Create Device';
 
-  // Material Categories
-  static const List<String> materialCategories = [
-    'Resistors',
-    'Capacitors',
-    'ICs',
-    'Connectors',
-    'LEDs',
-    'Sensors',
-    'PCBs',
-    'Enclosures',
-    'Mechanical',
-    'Other',
-  ];
+  // BOM Upload
+  static const String bomUploadTitle = 'BOM Upload';
+  static const String uploadBom = 'Upload BOM';
+  static const String bomFormat =
+      'BOM Format: Sr.No, Reference, Value, Footprint, Qty, Top/Bottom';
+  static const String saveBom = 'Save BOM';
+  static const String bomSaved = 'BOM saved successfully';
 
-  // PCB Types
-  static const List<String> pcbTypes = [
-    'Cape Board',
-    'DIDO Board',
-    'LED Board',
-    'Main Board',
-    'Sensor Board',
-    'Power Board',
-  ];
+  // Batch Production
+  static const String batchProduction = 'Batch Production';
+  static const String calculateBatch = 'Calculate Batch';
+  static const String quantityToProduce = 'Quantity to Produce';
+  static const String materialRequirements = 'Material Requirements';
+  static const String sufficientStock = 'Sufficient stock available';
+  static const String insufficientStock = 'Insufficient stock for production';
+  static const String proceedProduction = 'Proceed with Production';
 
-  // Device Categories
-  static const List<String> deviceCategories = [
-    'Air Leak Tester',
-    'Sensor Module',
-    'Control Unit',
-    'Display Module',
-    'Power Supply',
-    'Test Equipment',
-  ];
+  // Device History
+  static const String deviceHistoryTitle = 'Device History';
+  static const String producedDevices = 'Produced Devices';
+  static const String productionDate = 'Production Date';
+  static const String materialsUsed = 'Materials Used';
+  static const String totalCost = 'Total Cost';
 
-  // Filter Options
-  static const List<String> sortOptions = [
-    'Name (A-Z)',
-    'Name (Z-A)',
-    'Quantity (Low to High)',
-    'Quantity (High to Low)',
-    'Recently Added',
-    'Most Used',
-  ];
+  // Alerts
+  static const String alertsTitle = 'Stock Alerts';
+  static const String lowStockAlert = 'Low Stock Alert';
+  static const String criticalStockAlert = 'Critical Stock Alert';
+  static const String outOfStockAlert = 'Out of Stock Alert';
+  static const String noAlerts = 'No alerts at this time';
 
-  // UI Configuration
-  static const int itemsPerPage = 20;
-  static const double cardElevation = 2.0;
-  static const double borderRadius = 8.0;
-
-  // Animation Durations (in milliseconds)
-  static const int shortAnimation = 200;
-  static const int mediumAnimation = 400;
-  static const int longAnimation = 600;
-
-  // Local Storage Keys
-  static const String materialsDataKey = 'materials_data';
-  static const String devicesDataKey = 'devices_data';
-  static const String bomDataKey = 'bom_data';
-  static const String pcbDataKey = 'pcb_data';
-  static const String userPreferencesKey = 'user_preferences';
-  static const String lastBackupKey = 'last_backup_date';
-
-  // Notification Configuration
-  static const String lowStockChannelId = 'low_stock_alerts';
-  static const String lowStockChannelName = 'Low Stock Alerts';
-  static const String lowStockChannelDescription =
-      'Notifications for low stock materials';
-
-  // File Paths
-  static const String backupFolderName = 'ElectronicsInventory';
-  static const String exportFolderName = 'Exports';
-  static const String templatesFolderName = 'Templates';
-
-  // Excel Templates
-  static const Map<String, List<String>> excelTemplates = {
-    'materials': [
-      'Material Name',
-      'Category',
-      'Initial Quantity',
-      'Remaining Quantity',
-      'Unit',
-      'Supplier',
-      'Cost per Unit',
-      'Location',
-    ],
-    'bom': ['Sr.No', 'Reference', 'Value', 'Footprint', 'Qty', 'Top/Bottom'],
-  };
-
-  // Validation Rules
-  static const int minPasswordLength = 4;
-  static const int maxMaterialNameLength = 50;
-  static const int maxDeviceNameLength = 50;
-  static const int maxQuantity = 999999;
-  static const int minQuantity = 0;
-
-  // Date Formats
-  static const String dateFormat = 'dd/MM/yyyy';
-  static const String dateTimeFormat = 'dd/MM/yyyy HH:mm';
-  static const String timeFormat = 'HH:mm';
+  // General
+  static const String save = 'Save';
+  static const String cancel = 'Cancel';
+  static const String delete = 'Delete';
+  static const String edit = 'Edit';
+  static const String add = 'Add';
+  static const String update = 'Update';
+  static const String confirm = 'Confirm';
+  static const String success = 'Success';
+  static const String error = 'Error';
+  static const String warning = 'Warning';
+  static const String info = 'Info';
+  static const String loading = 'Loading...';
+  static const String noData = 'No data available';
+  static const String refresh = 'Refresh';
 
   // Error Messages
-  static const String networkError = 'Network connection error';
-  static const String fileNotFoundError = 'File not found';
-  static const String invalidFileError = 'Invalid file format';
-  static const String insufficientStockError = 'Insufficient stock available';
-  static const String duplicateEntryError = 'Entry already exists';
-
-  // Success Messages
-  static const String loginSuccess = 'Login successful';
-  static const String dataImportSuccess = 'Data imported successfully';
-  static const String stockUpdateSuccess = 'Stock updated successfully';
-  static const String bomUploadSuccess = 'BOM uploaded successfully';
-  static const String deviceCreatedSuccess = 'Device created successfully';
-
-  // Backup Configuration
-  static const int autoBackupDays = 7; // Auto backup every 7 days
-  static const int maxBackupFiles = 10; // Keep maximum 10 backup files
-
-  // Development Configuration
-  static const bool debugMode = true;
-  static const bool enableLogging = true;
-  static const String logFileName = 'app_logs.txt';
+  static const String fileNotFound = 'File not found';
+  static const String invalidFileFormat = 'Invalid file format';
+  static const String importFailed = 'Import failed';
+  static const String exportFailed = 'Export failed';
+  static const String saveFailed = 'Save failed';
+  static const String deleteFailed = 'Delete failed';
+  static const String networkError = 'Network error';
+  static const String unknownError = 'Unknown error occurred';
 }

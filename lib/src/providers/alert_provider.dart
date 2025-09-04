@@ -1,252 +1,273 @@
-import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../models/materials.dart';
-import '../services/stock_services.dart';
-import '../services/alert_services.dart';
 
-class AlertProvider with ChangeNotifier {
-  final StockService _stockService;
-  final AlertService _alertService;
-  
-  AlertProvider(this._stockService, this._alertService);
+// Alert types enum
+enum AlertType {
+  lowStock,
+  criticalStock,
+  outOfStock,
+  expiring,
+  production,
+  system,
+}
 
-  // Alert states
-  List<MaterialModel> _lowStockMaterials = [];
-  List<String> _criticalAlerts = [];
-  bool _isLoading = false;
-  String? _errorMessage;
-  
-  // Alert configuration
-  int _lowStockThreshold = 10;
-  int _criticalStockThreshold = 5;
-  bool _alertsEnabled = true;
+class StockAlert {
+  final String id;
+  final AlertType type;
+  final String title;
+  final String message;
+  final DateTime createdAt;
+  final bool isRead;
+  final String? materialId;
+  final String? deviceId;
+  final Map<String, dynamic>? data;
 
-  // Getters
-  List<MaterialModel> get lowStockMaterials => _lowStockMaterials;
-  List<String> get criticalAlerts => _criticalAlerts;
-  bool get isLoading => _isLoading;
-  String? get errorMessage => _errorMessage;
-  int get lowStockThreshold => _lowStockThreshold;
-  int get criticalStockThreshold => _criticalStockThreshold;
-  bool get alertsEnabled => _alertsEnabled;
-  
-  // Computed getters
-  int get lowStockCount => _lowStockMaterials.length;
-  int get criticalAlertsCount => _criticalAlerts.length;
-  bool get hasAlerts => lowStockCount > 0 || criticalAlertsCount > 0;
+  StockAlert({
+    required this.id,
+    required this.type,
+    required this.title,
+    required this.message,
+    required this.createdAt,
+    this.isRead = false,
+    this.materialId,
+    this.deviceId,
+    this.data,
+  });
 
-  /// Check all materials for low stock and generate alerts
-  Future<void> checkLowStock() async {
-    if (!_alertsEnabled) return;
-    
-    try {
-      _isLoading = true;
-      _errorMessage = null;
-      notifyListeners();
+  // Get alert color based on type
+  int get priority {
+    switch (type) {
+      case AlertType.outOfStock:
+        return 3; // Highest priority
+      case AlertType.criticalStock:
+        return 2;
+      case AlertType.lowStock:
+        return 1;
+      case AlertType.expiring:
+        return 1;
+      case AlertType.production:
+        return 1;
+      case AlertType.system:
+        return 0; // Lowest priority
+    }
+  }
 
-      // Get all materials from stock service
-      final allMaterials = await _stockService.getAllMaterials();
-      
-      // Filter materials with low stock
-      _lowStockMaterials = allMaterials.where((material) {
-        return material.remainingQuantity <= _lowStockThreshold;
-      }).toList();
+  StockAlert copyWith({
+    String? id,
+    AlertType? type,
+    String? title,
+    String? message,
+    DateTime? createdAt,
+    bool? isRead,
+    String? materialId,
+    String? deviceId,
+    Map<String, dynamic>? data,
+  }) {
+    return StockAlert(
+      id: id ?? this.id,
+      type: type ?? this.type,
+      title: title ?? this.title,
+      message: message ?? this.message,
+      createdAt: createdAt ?? this.createdAt,
+      isRead: isRead ?? this.isRead,
+      materialId: materialId ?? this.materialId,
+      deviceId: deviceId ?? this.deviceId,
+      data: data ?? this.data,
+    );
+  }
+}
 
-      // Generate critical alerts for very low stock
-      _criticalAlerts.clear();
-      for (var material in _lowStockMaterials) {
-        if (material.remainingQuantity <= _criticalStockThreshold) {
-          _criticalAlerts.add(
-            'CRITICAL: ${material.name} only has ${material.remainingQuantity} units left!'
+class AlertNotifier extends StateNotifier<List<StockAlert>> {
+  AlertNotifier() : super([]);
+
+  // Generate alerts from materials list
+  void generateMaterialAlerts(List<Material> materials) {
+    List<StockAlert> newAlerts = [];
+
+    for (Material material in materials) {
+      String alertId = '${material.id}_${material.remainingQuantity}';
+
+      // Check if alert already exists
+      bool alertExists = state.any(
+        (alert) =>
+            alert.materialId == material.id &&
+            alert.type == _getAlertTypeForMaterial(material),
+      );
+
+      if (!alertExists) {
+        if (material.isOutOfStock) {
+          newAlerts.add(
+            StockAlert(
+              id: alertId,
+              type: AlertType.outOfStock,
+              title: 'Out of Stock',
+              message: '${material.name} is completely out of stock',
+              createdAt: DateTime.now(),
+              materialId: material.id,
+            ),
+          );
+        } else if (material.isCriticalStock) {
+          newAlerts.add(
+            StockAlert(
+              id: alertId,
+              type: AlertType.criticalStock,
+              title: 'Critical Stock Level',
+              message:
+                  '${material.name} has only ${material.remainingQuantity} units remaining',
+              createdAt: DateTime.now(),
+              materialId: material.id,
+            ),
+          );
+        } else if (material.isLowStock) {
+          newAlerts.add(
+            StockAlert(
+              id: alertId,
+              type: AlertType.lowStock,
+              title: 'Low Stock Alert',
+              message:
+                  '${material.name} is running low (${material.remainingQuantity} units)',
+              createdAt: DateTime.now(),
+              materialId: material.id,
+            ),
           );
         }
       }
+    }
 
-      // Show system notifications if enabled
-      if (_lowStockMaterials.isNotEmpty) {
-        await _alertService.showLowStockNotification(
-          _lowStockMaterials.length,
-          _criticalAlerts.length,
-        );
+    // Remove old alerts for materials that are now in good stock
+    List<StockAlert> updatedAlerts = state.where((alert) {
+      if (alert.materialId != null) {
+        Material? material = materials
+            .where((m) => m.id == alert.materialId)
+            .firstOrNull;
+        if (material != null) {
+          // Keep alert if material still has the same stock status
+          return _getAlertTypeForMaterial(material) == alert.type;
+        }
       }
+      return true; // Keep non-material alerts
+    }).toList();
 
-    } catch (e) {
-      _errorMessage = 'Failed to check stock levels: ${e.toString()}';
-    } finally {
-      _isLoading = false;
-      notifyListeners();
-    }
+    // Add new alerts
+    updatedAlerts.addAll(newAlerts);
+
+    // Sort by priority and date
+    updatedAlerts.sort((a, b) {
+      int priorityCompare = b.priority.compareTo(a.priority);
+      if (priorityCompare != 0) return priorityCompare;
+      return b.createdAt.compareTo(a.createdAt);
+    });
+
+    state = updatedAlerts;
   }
 
-  /// Check if specific material quantity would trigger alert
-  bool wouldTriggerAlert(MaterialModel material, int newQuantity) {
-    return newQuantity <= _lowStockThreshold;
+  AlertType? _getAlertTypeForMaterial(Material material) {
+    if (material.isOutOfStock) return AlertType.outOfStock;
+    if (material.isCriticalStock) return AlertType.criticalStock;
+    if (material.isLowStock) return AlertType.lowStock;
+    return null;
   }
 
-  /// Check stock after material usage (called when BOM is processed)
-  Future<void> checkStockAfterUsage(List<MaterialModel> usedMaterials) async {
-    if (!_alertsEnabled) return;
-
-    List<String> newAlerts = [];
-    
-    for (var material in usedMaterials) {
-      if (material.remainingQuantity <= _criticalStockThreshold) {
-        newAlerts.add(
-          'URGENT: ${material.name} is running critically low (${material.remainingQuantity} left)'
-        );
-      } else if (material.remainingQuantity <= _lowStockThreshold) {
-        newAlerts.add(
-          'LOW STOCK: ${material.name} needs reordering (${material.remainingQuantity} left)'
-        );
-      }
-    }
-
-    if (newAlerts.isNotEmpty) {
-      _criticalAlerts.addAll(newAlerts);
-      await _alertService.showInstantAlert(
-        'Stock Alert',
-        '${newAlerts.length} materials need attention after production'
-      );
-      notifyListeners();
-    }
-
-    // Refresh full stock check
-    await checkLowStock();
-  }
-
-  /// Dismiss specific alert
-  void dismissAlert(int index) {
-    if (index >= 0 && index < _criticalAlerts.length) {
-      _criticalAlerts.removeAt(index);
-      notifyListeners();
-    }
-  }
-
-  /// Dismiss all alerts
-  void dismissAllAlerts() {
-    _criticalAlerts.clear();
-    notifyListeners();
-  }
-
-  /// Update alert thresholds
-  void updateThresholds({
-    int? lowStock,
-    int? criticalStock,
+  // Add production alert
+  void addProductionAlert({
+    required String title,
+    required String message,
+    String? deviceId,
+    Map<String, dynamic>? data,
   }) {
-    if (lowStock != null && lowStock > 0) {
-      _lowStockThreshold = lowStock;
-    }
-    if (criticalStock != null && criticalStock > 0) {
-      _criticalStockThreshold = criticalStock;
-    }
-    notifyListeners();
-    
-    // Recheck with new thresholds
-    checkLowStock();
+    final alert = StockAlert(
+      id: DateTime.now().millisecondsSinceEpoch.toString(),
+      type: AlertType.production,
+      title: title,
+      message: message,
+      createdAt: DateTime.now(),
+      deviceId: deviceId,
+      data: data,
+    );
+
+    state = [alert, ...state];
   }
 
-  /// Toggle alerts on/off
-  void toggleAlerts(bool enabled) {
-    _alertsEnabled = enabled;
-    if (!enabled) {
-      _lowStockMaterials.clear();
-      _criticalAlerts.clear();
-    }
-    notifyListeners();
-    
-    if (enabled) {
-      checkLowStock();
-    }
+  // Add system alert
+  void addSystemAlert({
+    required String title,
+    required String message,
+    Map<String, dynamic>? data,
+  }) {
+    final alert = StockAlert(
+      id: DateTime.now().millisecondsSinceEpoch.toString(),
+      type: AlertType.system,
+      title: title,
+      message: message,
+      createdAt: DateTime.now(),
+      data: data,
+    );
+
+    state = [alert, ...state];
   }
 
-  /// Get materials that will be insufficient for production
-  List<MaterialModel> getInsufficientMaterials(
-    List<MaterialModel> requiredMaterials,
-    int quantity,
-  ) {
-    return requiredMaterials.where((required) {
-      final needed = required.remainingQuantity * quantity;
-      final available = _stockService.getMaterialQuantity(required.id);
-      return available < needed;
+  // Mark alert as read
+  void markAsRead(String alertId) {
+    state = state.map((alert) {
+      if (alert.id == alertId) {
+        return alert.copyWith(isRead: true);
+      }
+      return alert;
     }).toList();
   }
 
-  /// Check if production is possible with current stock
-  bool canProduceQuantity(
-    List<MaterialModel> requiredMaterials,
-    int quantity,
-  ) {
-    return getInsufficientMaterials(requiredMaterials, quantity).isEmpty;
+  // Mark all alerts as read
+  void markAllAsRead() {
+    state = state.map((alert) => alert.copyWith(isRead: true)).toList();
   }
 
-  /// Get formatted alert message for UI display
-  String getFormattedAlertMessage(int index) {
-    if (index >= 0 && index < _criticalAlerts.length) {
-      return _criticalAlerts[index];
-    }
-    return '';
+  // Remove alert
+  void removeAlert(String alertId) {
+    state = state.where((alert) => alert.id != alertId).toList();
   }
 
-  /// Get alert severity level
-  AlertSeverity getAlertSeverity(MaterialModel material) {
-    if (material.remainingQuantity <= _criticalStockThreshold) {
-      return AlertSeverity.critical;
-    } else if (material.remainingQuantity <= _lowStockThreshold) {
-      return AlertSeverity.warning;
-    }
-    return AlertSeverity.normal;
+  // Clear all alerts
+  void clearAllAlerts() {
+    state = [];
   }
 
-  /// Clear any error messages
-  void clearError() {
-    _errorMessage = null;
-    notifyListeners();
+  // Get unread count
+  int get unreadCount => state.where((alert) => !alert.isRead).length;
+
+  // Get alerts by type
+  List<StockAlert> getAlertsByType(AlertType type) {
+    return state.where((alert) => alert.type == type).toList();
   }
 
-  /// Force refresh all alerts
-  Future<void> refreshAlerts() async {
-    await checkLowStock();
+  // Get recent alerts (last 24 hours)
+  List<StockAlert> getRecentAlerts() {
+    final yesterday = DateTime.now().subtract(const Duration(hours: 24));
+    return state.where((alert) => alert.createdAt.isAfter(yesterday)).toList();
   }
 }
 
-// Enum for alert severity levels
-enum AlertSeverity {
-  normal,
-  warning,
-  critical,
-}
+// Provider instances
+final alertProvider = StateNotifierProvider<AlertNotifier, List<StockAlert>>(
+  (ref) => AlertNotifier(),
+);
 
-// Extension for alert severity colors
-extension AlertSeverityExtension on AlertSeverity {
-  Color get color {
-    switch (this) {
-      case AlertSeverity.normal:
-        return Colors.green;
-      case AlertSeverity.warning:
-        return Colors.orange;
-      case AlertSeverity.critical:
-        return Colors.red;
-    }
-  }
+// Unread alerts count provider
+final unreadAlertsCountProvider = Provider<int>((ref) {
+  final alerts = ref.watch(alertProvider);
+  return alerts.where((alert) => !alert.isRead).length;
+});
 
-  String get label {
-    switch (this) {
-      case AlertSeverity.normal:
-        return 'Normal';
-      case AlertSeverity.warning:
-        return 'Low Stock';
-      case AlertSeverity.critical:
-        return 'Critical';
-    }
-  }
+// Recent alerts provider
+final recentAlertsProvider = Provider<List<StockAlert>>((ref) {
+  final notifier = ref.watch(alertProvider.notifier);
+  return notifier.getRecentAlerts();
+});
 
-  IconData get icon {
-    switch (this) {
-      case AlertSeverity.normal:
-        return Icons.check_circle;
-      case AlertSeverity.warning:
-        return Icons.warning;
-      case AlertSeverity.critical:
-        return Icons.error;
-    }
-  }
-}
+// Alerts by type provider
+final alertsByTypeProvider = Provider.family<List<StockAlert>, AlertType>((
+  ref,
+  type,
+) {
+  final notifier = ref.watch(alertProvider.notifier);
+  return notifier.getAlertsByType(type);
+});

@@ -1,87 +1,29 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../constants/app_string.dart';
+import '../constants/app_config.dart';
+import '../models/materials.dart' as model;
+import '../providers/materials_providers.dart';
+import '../widgets/materials_card.dart';
+import '../widgets/search_bar.dart' as custom;
+import '../widgets/filter.dart';
+import '../widgets/custom_button.dart';
+import '../services/excel_service.dart';
+import '../utils/notifier.dart';
 
-class MaterialListScreen extends StatefulWidget {
-  const MaterialListScreen({Key? key}) : super(key: key);
+class MaterialsListScreen extends ConsumerStatefulWidget {
+  const MaterialsListScreen({super.key});
 
   @override
-  State<MaterialListScreen> createState() => _MaterialListScreenState();
+  ConsumerState<MaterialsListScreen> createState() =>
+      _MaterialsListScreenState();
 }
 
-class _MaterialListScreenState extends State<MaterialListScreen> {
-  final _searchController = TextEditingController();
-  String _searchQuery = '';
-  String _selectedFilter = 'All';
+class _MaterialsListScreenState extends ConsumerState<MaterialsListScreen> {
+  final TextEditingController _searchController = TextEditingController();
+  String _currentFilter = 'All Materials';
+  String _currentSort = 'Name (A-Z)';
   bool _isLoading = false;
-
-  // Mock data - will be replaced with actual service calls
-  List<Map<String, dynamic>> _allMaterials = [
-    {
-      'name': 'Resistor 10K',
-      'reference': 'R001',
-      'quantity': 150,
-      'used': 25,
-      'remaining': 125,
-      'minQuantity': 50,
-      'unit': 'pcs',
-    },
-    {
-      'name': 'Capacitor 100uF',
-      'reference': 'C001',
-      'quantity': 80,
-      'used': 60,
-      'remaining': 20,
-      'minQuantity': 30,
-      'unit': 'pcs',
-    },
-    {
-      'name': 'LED Red 5mm',
-      'reference': 'LED001',
-      'quantity': 200,
-      'used': 15,
-      'remaining': 185,
-      'minQuantity': 40,
-      'unit': 'pcs',
-    },
-  ];
-
-  List<Map<String, dynamic>> get _filteredMaterials {
-    var materials = _allMaterials.where((material) {
-      final matchesSearch =
-          material['name'].toLowerCase().contains(_searchQuery.toLowerCase()) ||
-          material['reference'].toLowerCase().contains(
-            _searchQuery.toLowerCase(),
-          );
-
-      switch (_selectedFilter) {
-        case 'Low Stock':
-          return matchesSearch &&
-              material['remaining'] < material['minQuantity'];
-        case 'Out of Stock':
-          return matchesSearch && material['remaining'] == 0;
-        case 'High Usage':
-          return matchesSearch &&
-              material['used'] > (material['quantity'] * 0.5);
-        default:
-          return matchesSearch;
-      }
-    }).toList();
-
-    // Sort based on filter
-    materials.sort((a, b) {
-      switch (_selectedFilter) {
-        case 'Alpha Order':
-          return a['name'].compareTo(b['name']);
-        case 'Min Quantity':
-          return a['minQuantity'].compareTo(b['minQuantity']);
-        case 'Max Quantity':
-          return b['quantity'].compareTo(a['quantity']);
-        default:
-          return 0;
-      }
-    });
-
-    return materials;
-  }
 
   @override
   void dispose() {
@@ -89,336 +31,566 @@ class _MaterialListScreenState extends State<MaterialListScreen> {
     super.dispose();
   }
 
-  void _onSearchChanged(String query) {
-    setState(() {
-      _searchQuery = query;
-    });
-  }
-
-  Future<void> _importExcel() async {
-    setState(() => _isLoading = true);
-
-    // Simulate file picker and import
-    await Future.delayed(const Duration(seconds: 2));
-
-    setState(() => _isLoading = false);
-
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('Excel file imported successfully!'),
-        backgroundColor: Colors.green,
-      ),
-    );
-  }
-
-  void _updateStock(int index, int newRemaining) {
-    setState(() {
-      _allMaterials[index]['remaining'] = newRemaining;
-      _allMaterials[index]['used'] =
-          _allMaterials[index]['quantity'] - newRemaining;
-    });
-
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('Stock updated successfully!'),
-        backgroundColor: Colors.green,
-      ),
-    );
-  }
-
-  void _showUpdateStockDialog(int index) {
-    final material = _allMaterials[index];
-    final controller = TextEditingController(
-      text: material['remaining'].toString(),
-    );
-
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: Text('Update Stock: ${material['name']}'),
-        content: TextField(
-          controller: controller,
-          keyboardType: TextInputType.number,
-          decoration: const InputDecoration(
-            labelText: 'Remaining Quantity',
-            border: OutlineInputBorder(),
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Cancel'),
-          ),
-          ElevatedButton(
-            onPressed: () {
-              final newQuantity = int.tryParse(controller.text) ?? 0;
-              if (newQuantity >= 0 && newQuantity <= material['quantity']) {
-                _updateStock(index, newQuantity);
-                Navigator.pop(context);
-              } else {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: Text('Invalid quantity!'),
-                    backgroundColor: Colors.red,
-                  ),
-                );
-              }
-            },
-            child: const Text('Update'),
-          ),
-        ],
-      ),
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
+    final materialsAsync = ref.watch(materialsProvider);
+
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Raw Materials'),
-        backgroundColor: Colors.blue[600],
-        foregroundColor: Colors.white,
+        title: const Text(AppStrings.materialsTitle),
         actions: [
+          // Import Excel button
           IconButton(
-            onPressed: _importExcel,
-            icon: const Icon(Icons.upload_file),
-            tooltip: 'Import Excel',
+            icon: const Icon(Icons.file_upload),
+            tooltip: AppStrings.importExcel,
+            onPressed: _isLoading ? null : _handleImportExcel,
+          ),
+          // Export Excel button
+          IconButton(
+            icon: const Icon(Icons.file_download),
+            tooltip: AppStrings.exportExcel,
+            onPressed: _isLoading ? null : _handleExportExcel,
+          ),
+          // More options
+          PopupMenuButton<String>(
+            onSelected: (value) {
+              switch (value) {
+                case 'refresh':
+                  _handleRefresh();
+                  break;
+                case 'clear':
+                  _handleClearSearch();
+                  break;
+              }
+            },
+            itemBuilder: (context) => [
+              const PopupMenuItem(
+                value: 'refresh',
+                child: Row(
+                  children: [
+                    Icon(Icons.refresh),
+                    SizedBox(width: 8),
+                    Text('Refresh'),
+                  ],
+                ),
+              ),
+              const PopupMenuItem(
+                value: 'clear',
+                child: Row(
+                  children: [
+                    Icon(Icons.clear_all),
+                    SizedBox(width: 8),
+                    Text('Clear Search'),
+                  ],
+                ),
+              ),
+            ],
           ),
         ],
       ),
       body: Column(
         children: [
-          // Search and Filter Section
+          // Search and filter section
           Container(
             padding: const EdgeInsets.all(16),
-            color: Colors.grey[50],
+            decoration: BoxDecoration(
+              color: Colors.white,
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.grey.withOpacity(0.1),
+                  blurRadius: 4,
+                  offset: const Offset(0, 2),
+                ),
+              ],
+            ),
             child: Column(
               children: [
-                // Search Bar
-                TextField(
+                // Search bar
+                custom.SearchBar(
                   controller: _searchController,
-                  onChanged: _onSearchChanged,
-                  decoration: InputDecoration(
-                    hintText: 'Search materials...',
-                    prefixIcon: const Icon(Icons.search),
-                    suffixIcon: _searchQuery.isNotEmpty
-                        ? IconButton(
-                            icon: const Icon(Icons.clear),
-                            onPressed: () {
-                              _searchController.clear();
-                              _onSearchChanged('');
-                            },
-                          )
-                        : null,
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    filled: true,
-                    fillColor: Colors.white,
-                  ),
+                  hintText: AppStrings.searchMaterials,
+                  onChanged: (value) {
+                    setState(() {});
+                  },
+                  onClear: _handleClearSearch,
                 ),
                 const SizedBox(height: 12),
 
-                // Filter Chips
-                Wrap(
-                  spacing: 8,
-                  children:
-                      [
-                            'All',
-                            'Low Stock',
-                            'Out of Stock',
-                            'High Usage',
-                            'Alpha Order',
-                            'Min Quantity',
-                            'Max Quantity',
-                          ]
-                          .map(
-                            (filter) => FilterChip(
-                              label: Text(filter),
-                              selected: _selectedFilter == filter,
-                              onSelected: (selected) {
-                                setState(() {
-                                  _selectedFilter = selected ? filter : 'All';
-                                });
-                              },
-                            ),
-                          )
-                          .toList(),
+                // Filter and sort row
+                Row(
+                  children: [
+                    Expanded(
+                      child: FilterChip(
+                        label: Text(_currentFilter),
+                        selected: _currentFilter != 'All Materials',
+                        avatar: const Icon(Icons.filter_alt, size: 16),
+                        onSelected: (_) => _showFilterDialog(),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: FilterChip(
+                        label: Text(_currentSort),
+                        selected: _currentSort != 'Name (A-Z)',
+                        avatar: const Icon(Icons.sort, size: 16),
+                        onSelected: (_) => _showSortDialog(),
+                      ),
+                    ),
+                  ],
                 ),
               ],
             ),
           ),
 
-          // Materials List
+          // Materials list
           Expanded(
-            child: _isLoading
-                ? const Center(child: CircularProgressIndicator())
-                : _filteredMaterials.isEmpty
-                ? const Center(
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Icon(Icons.inventory_2, size: 64, color: Colors.grey),
-                        SizedBox(height: 16),
-                        Text(
-                          'No materials found',
-                          style: TextStyle(fontSize: 18, color: Colors.grey),
-                        ),
-                      ],
+            child: materialsAsync.when(
+              data: (materials) => _buildMaterialsList(materials),
+              loading: () => const Center(child: CircularProgressIndicator()),
+              error: (error, stack) => Center(
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(
+                      Icons.error_outline,
+                      size: 64,
+                      color: Colors.grey[400],
                     ),
-                  )
-                : ListView.builder(
-                    padding: const EdgeInsets.all(16),
-                    itemCount: _filteredMaterials.length,
-                    itemBuilder: (context, index) {
-                      final material = _filteredMaterials[index];
-                      final originalIndex = _allMaterials.indexOf(material);
-                      final isLowStock =
-                          material['remaining'] < material['minQuantity'];
-                      final isOutOfStock = material['remaining'] == 0;
-
-                      return Card(
-                        margin: const EdgeInsets.only(bottom: 12),
-                        child: Padding(
-                          padding: const EdgeInsets.all(16),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Row(
-                                children: [
-                                  Expanded(
-                                    child: Column(
-                                      crossAxisAlignment:
-                                          CrossAxisAlignment.start,
-                                      children: [
-                                        Text(
-                                          material['name'],
-                                          style: const TextStyle(
-                                            fontSize: 16,
-                                            fontWeight: FontWeight.bold,
-                                          ),
-                                        ),
-                                        Text(
-                                          'Ref: ${material['reference']}',
-                                          style: TextStyle(
-                                            color: Colors.grey[600],
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                  ),
-                                  if (isOutOfStock)
-                                    Container(
-                                      padding: const EdgeInsets.symmetric(
-                                        horizontal: 8,
-                                        vertical: 4,
-                                      ),
-                                      decoration: BoxDecoration(
-                                        color: Colors.red,
-                                        borderRadius: BorderRadius.circular(12),
-                                      ),
-                                      child: const Text(
-                                        'OUT OF STOCK',
-                                        style: TextStyle(
-                                          color: Colors.white,
-                                          fontSize: 10,
-                                          fontWeight: FontWeight.bold,
-                                        ),
-                                      ),
-                                    )
-                                  else if (isLowStock)
-                                    Container(
-                                      padding: const EdgeInsets.symmetric(
-                                        horizontal: 8,
-                                        vertical: 4,
-                                      ),
-                                      decoration: BoxDecoration(
-                                        color: Colors.orange,
-                                        borderRadius: BorderRadius.circular(12),
-                                      ),
-                                      child: const Text(
-                                        'LOW STOCK',
-                                        style: TextStyle(
-                                          color: Colors.white,
-                                          fontSize: 10,
-                                          fontWeight: FontWeight.bold,
-                                        ),
-                                      ),
-                                    ),
-                                ],
-                              ),
-                              const SizedBox(height: 12),
-
-                              // Quantity Info
-                              Row(
-                                children: [
-                                  _buildQuantityInfo(
-                                    'Total',
-                                    material['quantity'],
-                                  ),
-                                  _buildQuantityInfo('Used', material['used']),
-                                  _buildQuantityInfo(
-                                    'Remaining',
-                                    material['remaining'],
-                                    color: isOutOfStock
-                                        ? Colors.red
-                                        : isLowStock
-                                        ? Colors.orange
-                                        : Colors.green,
-                                  ),
-                                ],
-                              ),
-                              const SizedBox(height: 12),
-
-                              // Update Stock Button
-                              SizedBox(
-                                width: double.infinity,
-                                child: ElevatedButton.icon(
-                                  onPressed: () =>
-                                      _showUpdateStockDialog(originalIndex),
-                                  icon: const Icon(Icons.edit, size: 16),
-                                  label: const Text('Update Stock'),
-                                  style: ElevatedButton.styleFrom(
-                                    backgroundColor: Colors.blue[50],
-                                    foregroundColor: Colors.blue[700],
-                                    elevation: 0,
-                                  ),
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      );
-                    },
-                  ),
-          ),
-        ],
-      ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: _importExcel,
-        backgroundColor: Colors.blue[600],
-        child: const Icon(Icons.add, color: Colors.white),
-        tooltip: 'Import Excel',
-      ),
-    );
-  }
-
-  Widget _buildQuantityInfo(String label, int value, {Color? color}) {
-    return Expanded(
-      child: Column(
-        children: [
-          Text(label, style: TextStyle(fontSize: 12, color: Colors.grey[600])),
-          const SizedBox(height: 4),
-          Text(
-            value.toString(),
-            style: TextStyle(
-              fontSize: 18,
-              fontWeight: FontWeight.bold,
-              color: color ?? Colors.grey[800],
+                    const SizedBox(height: 16),
+                    Text(
+                      'Error loading materials',
+                      style: Theme.of(context).textTheme.titleMedium,
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      error.toString(),
+                      style: Theme.of(context).textTheme.bodySmall,
+                      textAlign: TextAlign.center,
+                    ),
+                    const SizedBox(height: 16),
+                    CustomButton(
+                      text: AppStrings.refresh,
+                      onPressed: _handleRefresh,
+                      icon: Icons.refresh,
+                    ),
+                  ],
+                ),
+              ),
             ),
           ),
         ],
       ),
+
+      // Floating action button for manual material addition
+      floatingActionButton: FloatingActionButton(
+        onPressed: () => _showAddMaterialDialog(),
+        tooltip: 'Add Material',
+        child: const Icon(Icons.add),
+      ),
     );
+  }
+
+  Widget _buildMaterialsList(List<model.Material> allMaterials) {
+    // Apply search filter
+    List<model.Material> filteredMaterials = _searchController.text.isEmpty
+        ? allMaterials
+        : ref.read(materialSearchProvider(_searchController.text));
+
+    // Apply category filter
+    if (_currentFilter != 'All Materials') {
+      filteredMaterials = ref
+          .read(materialsProvider.notifier)
+          .filterMaterials(_currentFilter);
+    }
+
+    // Apply sorting
+    final sortedMaterials = ref.read(
+      sortedMaterialsProvider({
+        'materials': filteredMaterials,
+        'sortType': _currentSort,
+      }),
+    );
+
+    if (sortedMaterials.isEmpty) {
+      return Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(Icons.inventory_2, size: 64, color: Colors.grey[400]),
+            const SizedBox(height: 16),
+            Text(
+              _searchController.text.isEmpty
+                  ? 'No materials found'
+                  : 'No materials match your search',
+              style: Theme.of(context).textTheme.titleMedium,
+            ),
+            const SizedBox(height: 8),
+            Text(
+              _searchController.text.isEmpty
+                  ? 'Import Excel file or add materials manually'
+                  : 'Try adjusting your search or filter',
+              style: Theme.of(context).textTheme.bodySmall,
+              textAlign: TextAlign.center,
+            ),
+            if (_searchController.text.isEmpty) ...[
+              const SizedBox(height: 16),
+              CustomButton(
+                text: AppStrings.importExcel,
+                onPressed: _handleImportExcel,
+                icon: Icons.file_upload,
+              ),
+            ],
+          ],
+        ),
+      );
+    }
+
+    return RefreshIndicator(
+      onRefresh: () async => _handleRefresh(),
+      child: ListView.builder(
+        padding: const EdgeInsets.all(16),
+        itemCount: sortedMaterials.length,
+        itemBuilder: (context, index) {
+          final material = sortedMaterials[index];
+          return MaterialsCard(
+            material: material,
+            onEdit: () => _showEditMaterialDialog(material),
+            onDelete: () => _showDeleteMaterialDialog(material),
+            onQuantityUpdate: (newQuantity) =>
+                _handleQuantityUpdate(material, newQuantity),
+          );
+        },
+      ),
+    );
+  }
+
+  void _showFilterDialog() {
+    showDialog(
+      context: context,
+      builder: (context) => FilterDialog(
+        currentFilter: _currentFilter,
+        options: AppConfig.filterOptions,
+        onFilterChanged: (filter) {
+          setState(() {
+            _currentFilter = filter;
+          });
+        },
+      ),
+    );
+  }
+
+  void _showSortDialog() {
+    showDialog(
+      context: context,
+      builder: (context) => FilterDialog(
+        title: 'Sort By',
+        currentFilter: _currentSort,
+        options: AppConfig.sortingOptions,
+        onFilterChanged: (sort) {
+          setState(() {
+            _currentSort = sort;
+          });
+        },
+      ),
+    );
+  }
+
+  void _showAddMaterialDialog() {
+    final nameController = TextEditingController();
+    final quantityController = TextEditingController();
+    final descriptionController = TextEditingController();
+    final GlobalKey<FormState> formKey = GlobalKey<FormState>();
+
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Add Material'),
+        content: Form(
+          key: formKey,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextFormField(
+                controller: nameController,
+                decoration: const InputDecoration(
+                  labelText: 'Material Name',
+                  prefixIcon: Icon(Icons.inventory),
+                ),
+                validator: (value) {
+                  if (value == null || value.trim().isEmpty) {
+                    return 'Please enter material name';
+                  }
+                  return null;
+                },
+              ),
+              const SizedBox(height: 16),
+              TextFormField(
+                controller: quantityController,
+                decoration: const InputDecoration(
+                  labelText: 'Initial Quantity',
+                  prefixIcon: Icon(Icons.numbers),
+                ),
+                keyboardType: TextInputType.number,
+                validator: (value) {
+                  if (value == null || value.trim().isEmpty) {
+                    return 'Please enter quantity';
+                  }
+                  if (int.tryParse(value) == null || int.parse(value) < 0) {
+                    return 'Please enter valid quantity';
+                  }
+                  return null;
+                },
+              ),
+              const SizedBox(height: 16),
+              TextFormField(
+                controller: descriptionController,
+                decoration: const InputDecoration(
+                  labelText: 'Description (Optional)',
+                  prefixIcon: Icon(Icons.description),
+                ),
+                maxLines: 2,
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () {
+              Navigator.of(context).pop();
+            },
+            child: const Text(AppStrings.cancel),
+          ),
+          CustomButton(
+            text: AppStrings.add,
+            onPressed: () {
+              if (formKey.currentState!.validate()) {
+                final material = model.Material(
+                  id: DateTime.now().millisecondsSinceEpoch.toString(),
+                  name: nameController.text.trim(),
+                  initialQuantity: int.parse(quantityController.text),
+                  remainingQuantity: int.parse(quantityController.text),
+                  createdAt: DateTime.now(),
+                  lastUsedAt: DateTime.now(),
+                  description: descriptionController.text.trim().isEmpty
+                      ? null
+                      : descriptionController.text.trim(),
+                );
+
+                ref.read(materialsProvider.notifier).addMaterial(material);
+                Navigator.of(context).pop();
+
+                NotificationUtils.showSuccess(
+                  context,
+                  'Material added successfully',
+                );
+              }
+            },
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showEditMaterialDialog(model.Material material) {
+    final nameController = TextEditingController(text: material.name);
+    final quantityController = TextEditingController(
+      text: material.remainingQuantity.toString(),
+    );
+    final descriptionController = TextEditingController(
+      text: material.description ?? '',
+    );
+    final GlobalKey<FormState> formKey = GlobalKey<FormState>();
+
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Edit Material'),
+        content: Form(
+          key: formKey,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextFormField(
+                controller: nameController,
+                decoration: const InputDecoration(
+                  labelText: 'Material Name',
+                  prefixIcon: Icon(Icons.inventory),
+                ),
+                validator: (value) {
+                  if (value == null || value.trim().isEmpty) {
+                    return 'Please enter material name';
+                  }
+                  return null;
+                },
+              ),
+              const SizedBox(height: 16),
+              TextFormField(
+                controller: quantityController,
+                decoration: const InputDecoration(
+                  labelText: 'Remaining Quantity',
+                  prefixIcon: Icon(Icons.numbers),
+                ),
+                keyboardType: TextInputType.number,
+                validator: (value) {
+                  if (value == null || value.trim().isEmpty) {
+                    return 'Please enter quantity';
+                  }
+                  if (int.tryParse(value) == null || int.parse(value) < 0) {
+                    return 'Please enter valid quantity';
+                  }
+                  return null;
+                },
+              ),
+              const SizedBox(height: 16),
+              TextFormField(
+                controller: descriptionController,
+                decoration: const InputDecoration(
+                  labelText: 'Description (Optional)',
+                  prefixIcon: Icon(Icons.description),
+                ),
+                maxLines: 2,
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text(AppStrings.cancel),
+          ),
+          CustomButton(
+            text: AppStrings.update,
+            onPressed: () {
+              if (formKey.currentState!.validate()) {
+                final updatedMaterial = material.copyWith(
+                  name: nameController.text.trim(),
+                  remainingQuantity: int.parse(quantityController.text),
+                  description: descriptionController.text.trim().isEmpty
+                      ? null
+                      : descriptionController.text.trim(),
+                );
+
+                ref
+                    .read(materialsProvider.notifier)
+                    .updateMaterial(updatedMaterial);
+                Navigator.of(context).pop();
+
+                NotificationUtils.showSuccess(
+                  context,
+                  'Material updated successfully',
+                );
+              }
+            },
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showDeleteMaterialDialog(model.Material material) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Delete Material'),
+        content: Text('Are you sure you want to delete "${material.name}"?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text(AppStrings.cancel),
+          ),
+          CustomButton(
+            text: AppStrings.delete,
+            backgroundColor: Colors.red,
+            onPressed: () {
+              ref.read(materialsProvider.notifier).deleteMaterial(material.id);
+              Navigator.of(context).pop();
+
+              NotificationUtils.showSuccess(
+                context,
+                'Material deleted successfully',
+              );
+            },
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _handleQuantityUpdate(model.Material material, int newQuantity) {
+    ref
+        .read(materialsProvider.notifier)
+        .updateRemainingQuantity(material.id, newQuantity);
+
+    NotificationUtils.showSuccess(context, 'Quantity updated successfully');
+  }
+
+  Future<void> _handleImportExcel() async {
+    setState(() {
+      _isLoading = true;
+    });
+
+    try {
+      await ref.read(materialsProvider.notifier).importMaterials();
+
+      if (mounted) {
+        NotificationUtils.showSuccess(
+          context,
+          'Materials imported successfully',
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        NotificationUtils.showError(context, 'Import failed: $e');
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
+      }
+    }
+  }
+
+  Future<void> _handleExportExcel() async {
+    setState(() {
+      _isLoading = true;
+    });
+
+    try {
+      bool success = await ref
+          .read(materialsProvider.notifier)
+          .exportMaterials();
+
+      if (mounted) {
+        if (success) {
+          NotificationUtils.showSuccess(
+            context,
+            'Materials exported successfully',
+          );
+        } else {
+          NotificationUtils.showError(context, 'Export failed');
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        NotificationUtils.showError(context, 'Export failed: $e');
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
+      }
+    }
+  }
+
+  void _handleRefresh() {
+    // In a real app, you would reload data from storage
+    setState(() {});
+  }
+
+  void _handleClearSearch() {
+    _searchController.clear();
+    setState(() {});
   }
 }

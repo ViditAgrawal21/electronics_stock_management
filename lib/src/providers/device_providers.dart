@@ -1,350 +1,277 @@
-import 'package:flutter/foundation.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../models/devices.dart';
 import '../models/pcb.dart';
+import '../models/bom.dart';
 import '../models/materials.dart';
-import '../services/stock_services.dart';
 
-class DeviceProvider with ChangeNotifier {
-  final StockService _stockService = StockService();
+// Device state notifier
+class DeviceNotifier extends StateNotifier<AsyncValue<List<Device>>> {
+  DeviceNotifier() : super(const AsyncValue.loading()) {
+    _loadDevices();
+  }
 
-  // State variables
-  List<Device> _devices = [];
-  List<Device> _deviceHistory = [];
-  Device? _currentDevice;
-  bool _isLoading = false;
-  String? _error;
+  List<Device> _allDevices = [];
+  List<ProductionRecord> _productionHistory = [];
 
-  // Getters
-  List<Device> get devices => _devices;
-  List<Device> get deviceHistory => _deviceHistory;
-  Device? get currentDevice => _currentDevice;
-  bool get isLoading => _isLoading;
-  String? get error => _error;
-
-  // Create new device
-  Future<bool> createDevice({
-    required String deviceName,
-    required List<String> subComponents,
-    required List<PCB> pcbs,
-  }) async {
+  // Load devices (from local storage or initialize empty)
+  Future<void> _loadDevices() async {
     try {
-      _setLoading(true);
-      _clearError();
-
-      // Create new device
-      final device = Device(
-        id: DateTime.now().millisecondsSinceEpoch.toString(),
-        name: deviceName,
-        subComponents: subComponents,
-        pcbs: pcbs,
-        createdDate: DateTime.now(),
-        totalMaterialsUsed: _calculateTotalMaterials(pcbs),
-      );
-
-      // Add to devices list
-      _devices.add(device);
-      _currentDevice = device;
-
-      notifyListeners();
-      _setLoading(false);
-      return true;
-    } catch (e) {
-      _setError('Failed to create device: ${e.toString()}');
-      _setLoading(false);
-      return false;
+      // In a real app, you would load from local storage here
+      _allDevices = [];
+      state = AsyncValue.data(_allDevices);
+    } catch (error, stackTrace) {
+      state = AsyncValue.error(error, stackTrace);
     }
   }
 
-  // Calculate material requirements for batch production
-  Future<Map<String, dynamic>> calculateBatchRequirements({
-    required String deviceId,
-    required int quantity,
-  }) async {
-    try {
-      _setLoading(true);
-      _clearError();
-
-      final device = _devices.firstWhere((d) => d.id == deviceId);
-      Map<String, int> totalRequirements = {};
-      Map<String, bool> availabilityStatus = {};
-      List<String> shortageItems = [];
-
-      // Calculate total material requirements
-      for (PCB pcb in device.pcbs) {
-        for (var bomItem in pcb.bomItems) {
-          String materialRef = bomItem.reference;
-          int requiredQty = bomItem.quantity * quantity;
-
-          if (totalRequirements.containsKey(materialRef)) {
-            totalRequirements[materialRef] =
-                totalRequirements[materialRef]! + requiredQty;
-          } else {
-            totalRequirements[materialRef] = requiredQty;
-          }
-        }
-      }
-
-      // Check availability against current stock
-      final currentStock = await _stockService.getAllMaterials();
-
-      for (String materialRef in totalRequirements.keys) {
-        int required = totalRequirements[materialRef]!;
-
-        // Find material in current stock
-        final material = currentStock.firstWhere(
-          (m) => m.reference == materialRef,
-          orElse: () => Material(
-            reference: materialRef,
-            value: 'Unknown',
-            footprint: '',
-            initialQuantity: 0,
-            remainingQuantity: 0,
-            usedQuantity: 0,
-          ),
-        );
-
-        bool isAvailable = material.remainingQuantity >= required;
-        availabilityStatus[materialRef] = isAvailable;
-
-        if (!isAvailable) {
-          shortageItems.add(
-            '$materialRef (Need: $required, Available: ${material.remainingQuantity})',
-          );
-        }
-      }
-
-      _setLoading(false);
-
-      return {
-        'canProduce': shortageItems.isEmpty,
-        'requirements': totalRequirements,
-        'availability': availabilityStatus,
-        'shortages': shortageItems,
-        'quantity': quantity,
-      };
-    } catch (e) {
-      _setError('Failed to calculate batch requirements: ${e.toString()}');
-      _setLoading(false);
-      return {'canProduce': false, 'error': e.toString()};
-    }
+  // Add new device
+  void addDevice(Device device) {
+    _allDevices.add(device);
+    state = AsyncValue.data(List.from(_allDevices));
   }
 
-  // Execute production and update stock
-  Future<bool> executeProduction({
-    required String deviceId,
-    required int quantity,
-  }) async {
-    try {
-      _setLoading(true);
-      _clearError();
-
-      final device = _devices.firstWhere((d) => d.id == deviceId);
-
-      // Calculate requirements first
-      final requirements = await calculateBatchRequirements(
-        deviceId: deviceId,
-        quantity: quantity,
-      );
-
-      if (!requirements['canProduce']) {
-        _setError('Cannot produce: Material shortage');
-        _setLoading(false);
-        return false;
-      }
-
-      // Update stock for each material used
-      Map<String, int> materialUsage = requirements['requirements'];
-
-      for (String materialRef in materialUsage.keys) {
-        int usedQty = materialUsage[materialRef]!;
-        await _stockService.updateMaterialUsage(materialRef, usedQty);
-      }
-
-      // Create production record
-      final productionRecord = Device(
-        id: DateTime.now().millisecondsSinceEpoch.toString(),
-        name: '${device.name} (${quantity}x)',
-        subComponents: device.subComponents,
-        pcbs: device.pcbs,
-        createdDate: DateTime.now(),
-        quantityProduced: quantity,
-        totalMaterialsUsed: materialUsage,
-      );
-
-      // Add to history
-      _deviceHistory.insert(0, productionRecord);
-
-      notifyListeners();
-      _setLoading(false);
-      return true;
-    } catch (e) {
-      _setError('Failed to execute production: ${e.toString()}');
-      _setLoading(false);
-      return false;
-    }
-  }
-
-  // Get device by ID
-  Device? getDeviceById(String deviceId) {
-    try {
-      return _devices.firstWhere((device) => device.id == deviceId);
-    } catch (e) {
-      return null;
+  // Update device
+  void updateDevice(Device updatedDevice) {
+    int index = _allDevices.indexWhere((d) => d.id == updatedDevice.id);
+    if (index != -1) {
+      _allDevices[index] = updatedDevice;
+      state = AsyncValue.data(List.from(_allDevices));
     }
   }
 
   // Delete device
-  Future<bool> deleteDevice(String deviceId) async {
-    try {
-      _devices.removeWhere((device) => device.id == deviceId);
+  void deleteDevice(String deviceId) {
+    _allDevices.removeWhere((d) => d.id == deviceId);
+    state = AsyncValue.data(List.from(_allDevices));
+  }
 
-      if (_currentDevice?.id == deviceId) {
-        _currentDevice = null;
-      }
+  // Update PCB BOM
+  void updatePcbBOM(String deviceId, String pcbId, BOM bom) {
+    int deviceIndex = _allDevices.indexWhere((d) => d.id == deviceId);
+    if (deviceIndex != -1) {
+      Device device = _allDevices[deviceIndex];
+      List<PCB> updatedPcbs = device.pcbs.map((pcb) {
+        if (pcb.id == pcbId) {
+          return pcb.copyWith(bom: bom, updatedAt: DateTime.now());
+        }
+        return pcb;
+      }).toList();
 
-      notifyListeners();
-      return true;
-    } catch (e) {
-      _setError('Failed to delete device: ${e.toString()}');
-      return false;
+      Device updatedDevice = device.copyWith(
+        pcbs: updatedPcbs,
+        updatedAt: DateTime.now(),
+      );
+
+      _allDevices[deviceIndex] = updatedDevice;
+      state = AsyncValue.data(List.from(_allDevices));
     }
   }
 
-  // Set current device
-  void setCurrentDevice(Device device) {
-    _currentDevice = device;
-    notifyListeners();
-  }
+  // Calculate material requirements for batch production
+  Map<String, int> calculateBatchMaterialRequirements(
+    String deviceId,
+    int quantity,
+  ) {
+    Device? device = _allDevices.where((d) => d.id == deviceId).firstOrNull;
+    if (device == null) return {};
 
-  // Clear current device
-  void clearCurrentDevice() {
-    _currentDevice = null;
-    notifyListeners();
-  }
+    Map<String, int> totalRequirements = {};
 
-  // Get production history with date filtering
-  List<Device> getProductionHistory({DateTime? fromDate, DateTime? toDate}) {
-    List<Device> filteredHistory = List.from(_deviceHistory);
+    // Calculate requirements from all PCB BOMs
+    for (PCB pcb in device.pcbs) {
+      if (pcb.bom != null) {
+        for (BOMItem item in pcb.bom!.items) {
+          String materialName = item.value; // Raw material name
+          int requiredPerPcb = item.quantity;
+          int totalRequired = requiredPerPcb * quantity;
 
-    if (fromDate != null) {
-      filteredHistory = filteredHistory
-          .where(
-            (device) => device.createdDate.isAfter(
-              fromDate.subtract(const Duration(days: 1)),
-            ),
-          )
-          .toList();
-    }
-
-    if (toDate != null) {
-      filteredHistory = filteredHistory
-          .where(
-            (device) => device.createdDate.isBefore(
-              toDate.add(const Duration(days: 1)),
-            ),
-          )
-          .toList();
-    }
-
-    return filteredHistory;
-  }
-
-  // Get total devices produced
-  int getTotalDevicesProduced() {
-    return _deviceHistory.fold(
-      0,
-      (total, device) => total + (device.quantityProduced ?? 1),
-    );
-  }
-
-  // Get most produced device
-  String? getMostProducedDevice() {
-    if (_deviceHistory.isEmpty) return null;
-
-    Map<String, int> deviceCount = {};
-
-    for (Device device in _deviceHistory) {
-      String baseName = device.name.split(' (')[0]; // Remove quantity part
-      int quantity = device.quantityProduced ?? 1;
-
-      if (deviceCount.containsKey(baseName)) {
-        deviceCount[baseName] = deviceCount[baseName]! + quantity;
-      } else {
-        deviceCount[baseName] = quantity;
-      }
-    }
-
-    String mostProduced = '';
-    int maxCount = 0;
-
-    deviceCount.forEach((name, count) {
-      if (count > maxCount) {
-        maxCount = count;
-        mostProduced = name;
-      }
-    });
-
-    return mostProduced.isEmpty ? null : mostProduced;
-  }
-
-  // Helper methods
-  Map<String, int> _calculateTotalMaterials(List<PCB> pcbs) {
-    Map<String, int> totalMaterials = {};
-
-    for (PCB pcb in pcbs) {
-      for (var bomItem in pcb.bomItems) {
-        String materialRef = bomItem.reference;
-        int quantity = bomItem.quantity;
-
-        if (totalMaterials.containsKey(materialRef)) {
-          totalMaterials[materialRef] = totalMaterials[materialRef]! + quantity;
-        } else {
-          totalMaterials[materialRef] = quantity;
+          totalRequirements[materialName] =
+              (totalRequirements[materialName] ?? 0) + totalRequired;
         }
       }
     }
 
-    return totalMaterials;
+    return totalRequirements;
   }
 
-  void _setLoading(bool loading) {
-    _isLoading = loading;
-    if (!loading) notifyListeners();
+  // Check if device can be produced with available materials
+  Map<String, dynamic> checkProductionFeasibility(
+    String deviceId,
+    int quantity,
+    List<Material> availableMaterials,
+  ) {
+    Map<String, int> requirements = calculateBatchMaterialRequirements(
+      deviceId,
+      quantity,
+    );
+    Map<String, int> shortages = {};
+    Map<String, int> available = {};
+    bool canProduce = true;
+
+    for (String materialName in requirements.keys) {
+      int requiredQty = requirements[materialName] ?? 0;
+
+      // Find material by name (case insensitive)
+      Material? material = availableMaterials
+          .where((m) => m.name.toLowerCase() == materialName.toLowerCase())
+          .firstOrNull;
+
+      if (material != null) {
+        available[materialName] = material.remainingQuantity;
+        if (material.remainingQuantity < requiredQty) {
+          shortages[materialName] = requiredQty - material.remainingQuantity;
+          canProduce = false;
+        }
+      } else {
+        shortages[materialName] = requiredQty;
+        available[materialName] = 0;
+        canProduce = false;
+      }
+    }
+
+    return {
+      'canProduce': canProduce,
+      'requirements': requirements,
+      'shortages': shortages,
+      'available': available,
+    };
   }
 
-  void _setError(String error) {
-    _error = error;
-    _isLoading = false;
-    notifyListeners();
+  // Record production
+  void recordProduction({
+    required String deviceId,
+    required int quantityProduced,
+    required Map<String, int> materialsUsed,
+    double? totalCost,
+    String? notes,
+  }) {
+    Device? device = _allDevices.where((d) => d.id == deviceId).firstOrNull;
+    if (device == null) return;
+
+    final productionRecord = ProductionRecord(
+      id: DateTime.now().millisecondsSinceEpoch.toString(),
+      deviceId: deviceId,
+      deviceName: device.name,
+      quantityProduced: quantityProduced,
+      productionDate: DateTime.now(),
+      materialsUsed: materialsUsed,
+      totalCost: totalCost ?? 0.0,
+      notes: notes,
+    );
+
+    _productionHistory.insert(0, productionRecord); // Add to beginning
+
+    // Keep only last 100 production records
+    if (_productionHistory.length > 100) {
+      _productionHistory = _productionHistory.take(100).toList();
+    }
   }
 
-  void _clearError() {
-    _error = null;
+  // Get device by ID
+  Device? getDeviceById(String id) {
+    return _allDevices.where((d) => d.id == id).firstOrNull;
   }
 
-  // Clear all data
-  void clearAll() {
-    _devices.clear();
-    _deviceHistory.clear();
-    _currentDevice = null;
-    _error = null;
-    _isLoading = false;
-    notifyListeners();
+  // Get devices ready for production
+  List<Device> getReadyForProductionDevices() {
+    return _allDevices.where((d) => d.isReadyForProduction).toList();
   }
 
-  // Search devices
-  List<Device> searchDevices(String query) {
-    if (query.isEmpty) return _devices;
+  // Get devices needing BOM upload
+  List<Device> getDevicesNeedingBOM() {
+    return _allDevices.where((d) => !d.isReadyForProduction).toList();
+  }
 
-    return _devices
-        .where(
-          (device) =>
-              device.name.toLowerCase().contains(query.toLowerCase()) ||
-              device.subComponents.any(
-                (component) =>
-                    component.toLowerCase().contains(query.toLowerCase()),
-              ),
-        )
-        .toList();
+  // Get production history
+  List<ProductionRecord> getProductionHistory() {
+    return List.from(_productionHistory);
+  }
+
+  // Get production history for specific device
+  List<ProductionRecord> getDeviceProductionHistory(String deviceId) {
+    return _productionHistory.where((r) => r.deviceId == deviceId).toList();
+  }
+
+  // Get production statistics
+  Map<String, dynamic> getProductionStatistics() {
+    int totalProduced = _productionHistory.fold(
+      0,
+      (sum, record) => sum + record.quantityProduced,
+    );
+    double totalCost = _productionHistory.fold(
+      0.0,
+      (sum, record) => sum + record.totalCost,
+    );
+
+    Map<String, int> deviceProduction = {};
+    for (ProductionRecord record in _productionHistory) {
+      deviceProduction[record.deviceName] =
+          (deviceProduction[record.deviceName] ?? 0) + record.quantityProduced;
+    }
+
+    return {
+      'totalProduced': totalProduced,
+      'totalCost': totalCost,
+      'deviceProduction': deviceProduction,
+      'totalRecords': _productionHistory.length,
+    };
+  }
+
+  // Reset all data
+  void resetData() {
+    _allDevices.clear();
+    _productionHistory.clear();
+    state = const AsyncValue.data([]);
   }
 }
+
+// Provider instances
+final deviceProvider =
+    StateNotifierProvider<DeviceNotifier, AsyncValue<List<Device>>>(
+      (ref) => DeviceNotifier(),
+    );
+
+// Ready for production devices provider
+final readyForProductionDevicesProvider = Provider<List<Device>>((ref) {
+  final devicesState = ref.watch(deviceProvider);
+  return devicesState.when(
+    data: (devices) {
+      final notifier = ref.read(deviceProvider.notifier);
+      return notifier.getReadyForProductionDevices();
+    },
+    loading: () => [],
+    error: (_, __) => [],
+  );
+});
+
+// Devices needing BOM provider
+final devicesNeedingBOMProvider = Provider<List<Device>>((ref) {
+  final devicesState = ref.watch(deviceProvider);
+  return devicesState.when(
+    data: (devices) {
+      final notifier = ref.read(deviceProvider.notifier);
+      return notifier.getDevicesNeedingBOM();
+    },
+    loading: () => [],
+    error: (_, __) => [],
+  );
+});
+
+// Production history provider
+final productionHistoryProvider = Provider<List<ProductionRecord>>((ref) {
+  final notifier = ref.read(deviceProvider.notifier);
+  return notifier.getProductionHistory();
+});
+
+// Production statistics provider
+final productionStatisticsProvider = Provider<Map<String, dynamic>>((ref) {
+  final notifier = ref.read(deviceProvider.notifier);
+  return notifier.getProductionStatistics();
+});
+
+// Device production history provider
+final deviceProductionHistoryProvider =
+    Provider.family<List<ProductionRecord>, String>((ref, deviceId) {
+      final notifier = ref.read(deviceProvider.notifier);
+      return notifier.getDeviceProductionHistory(deviceId);
+    });

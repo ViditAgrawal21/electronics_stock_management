@@ -1,435 +1,1039 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../constants/app_string.dart';
+import '../models/bom.dart';
+import '../models/devices.dart';
+import '../models/pcb.dart';
+import '../providers/device_providers.dart';
+import '../providers/materials_providers.dart';
+import '../services/excel_service.dart';
+import '../widgets/custom_button.dart';
+import '../widgets/bom_table.dart';
 
-class BomUploadScreen extends StatefulWidget {
-  const BomUploadScreen({Key? key}) : super(key: key);
+class BomUploadScreen extends ConsumerStatefulWidget {
+  final String? pcbId;
+  final String? pcbName;
+
+  const BomUploadScreen({super.key, this.pcbId, this.pcbName});
 
   @override
-  State<BomUploadScreen> createState() => _BomUploadScreenState();
+  ConsumerState<BomUploadScreen> createState() => _BomUploadScreenState();
 }
 
-class _BomUploadScreenState extends State<BomUploadScreen> {
-  bool _isLoading = false;
-  String? _selectedFileName;
-  List<Map<String, dynamic>> _bomData = [];
-  final _pcbNameController = TextEditingController();
+class _BomUploadScreenState extends ConsumerState<BomUploadScreen>
+    with SingleTickerProviderStateMixin {
+  late TabController _tabController;
 
-  // Mock BOM data after upload
-  final List<Map<String, dynamic>> _mockBomData = [
-    {
-      'srNo': 1,
-      'reference': 'R1,R2,R3',
-      'value': '10K Resistor',
-      'footprint': '0603',
-      'qty': 3,
-      'topBottom': 'Top',
-    },
-    {
-      'srNo': 2,
-      'reference': 'C1,C2',
-      'value': '100uF Capacitor',
-      'footprint': '0805',
-      'qty': 2,
-      'topBottom': 'Top',
-    },
-    {
-      'srNo': 3,
-      'reference': 'LED1',
-      'value': 'Red LED 5mm',
-      'footprint': 'LED_D5.0mm',
-      'qty': 1,
-      'topBottom': 'Top',
-    },
-    {
-      'srNo': 4,
-      'reference': 'U1',
-      'value': 'Arduino Nano',
-      'footprint': 'Module_Arduino',
-      'qty': 1,
-      'topBottom': 'Top',
-    },
-  ];
+  List<BOMItem> _currentBomItems = [];
+  String? _selectedPcbId;
+  String? _selectedDeviceId;
+  bool _isLoading = false;
+  bool _hasUnsavedChanges = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _tabController = TabController(length: 2, vsync: this);
+    _selectedPcbId = widget.pcbId;
+  }
 
   @override
   void dispose() {
-    _pcbNameController.dispose();
+    _tabController.dispose();
     super.dispose();
-  }
-
-  Future<void> _pickExcelFile() async {
-    setState(() => _isLoading = true);
-
-    // Simulate file picker
-    await Future.delayed(const Duration(seconds: 1));
-
-    setState(() {
-      _selectedFileName = 'bom_cape_board.xlsx';
-      _isLoading = false;
-    });
-
-    _showSnackBar('Excel file selected: $_selectedFileName', Colors.blue);
-  }
-
-  Future<void> _uploadBom() async {
-    if (_selectedFileName == null) {
-      _showSnackBar('Please select an Excel file first', Colors.red);
-      return;
-    }
-
-    if (_pcbNameController.text.trim().isEmpty) {
-      _showSnackBar('Please enter PCB name', Colors.red);
-      return;
-    }
-
-    setState(() => _isLoading = true);
-
-    // Simulate BOM processing
-    await Future.delayed(const Duration(seconds: 2));
-
-    setState(() {
-      _bomData = List.from(_mockBomData);
-      _isLoading = false;
-    });
-
-    _showSnackBar('BOM uploaded and processed successfully!', Colors.green);
-  }
-
-  void _showSnackBar(String message, Color color) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(message),
-        backgroundColor: color,
-        behavior: SnackBarBehavior.floating,
-      ),
-    );
-  }
-
-  Future<void> _saveBom() async {
-    if (_bomData.isEmpty) {
-      _showSnackBar('No BOM data to save', Colors.red);
-      return;
-    }
-
-    setState(() => _isLoading = true);
-    await Future.delayed(const Duration(seconds: 1));
-    setState(() => _isLoading = false);
-
-    _showSnackBar('BOM saved successfully!', Colors.green);
-    Navigator.pop(context);
-  }
-
-  void _clearBom() {
-    setState(() {
-      _bomData.clear();
-      _selectedFileName = null;
-      _pcbNameController.clear();
-    });
-    _showSnackBar('BOM data cleared', Colors.orange);
   }
 
   @override
   Widget build(BuildContext context) {
+    final devicesAsync = ref.watch(deviceProvider);
+
     return Scaffold(
       appBar: AppBar(
-        title: const Text('BOM Upload'),
-        backgroundColor: Colors.green[600],
-        foregroundColor: Colors.white,
+        title: const Text(AppStrings.bomUploadTitle),
         actions: [
-          if (_bomData.isNotEmpty)
-            IconButton(
-              onPressed: _clearBom,
-              icon: const Icon(Icons.clear_all),
-              tooltip: 'Clear BOM',
-            ),
-        ],
-      ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            // PCB Name Input
-            Card(
-              child: Padding(
-                padding: const EdgeInsets.all(16),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
+          IconButton(
+            icon: const Icon(Icons.help_outline),
+            onPressed: _showHelpDialog,
+            tooltip: 'Help',
+          ),
+          PopupMenuButton<String>(
+            onSelected: (value) async {
+              switch (value) {
+                case 'template':
+                  await _downloadTemplate();
+                  break;
+                case 'clear':
+                  _clearCurrentBOM();
+                  break;
+              }
+            },
+            itemBuilder: (context) => [
+              const PopupMenuItem(
+                value: 'template',
+                child: Row(
                   children: [
-                    Text(
-                      'PCB Information',
-                      style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                    const SizedBox(height: 16),
-                    TextField(
-                      controller: _pcbNameController,
-                      decoration: InputDecoration(
-                        labelText: 'PCB Name',
-                        hintText: 'e.g., Cape Board, DIDO Board, LED Board',
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                        prefixIcon: const Icon(Icons.memory),
-                      ),
-                    ),
+                    Icon(Icons.download),
+                    SizedBox(width: 8),
+                    Text('Download Template'),
                   ],
                 ),
               ),
+              if (_currentBomItems.isNotEmpty)
+                const PopupMenuItem(
+                  value: 'clear',
+                  child: Row(
+                    children: [
+                      Icon(Icons.clear_all),
+                      SizedBox(width: 8),
+                      Text('Clear BOM'),
+                    ],
+                  ),
+                ),
+            ],
+          ),
+        ],
+        bottom: TabBar(
+          controller: _tabController,
+          tabs: const [
+            Tab(icon: Icon(Icons.upload_file), text: 'Upload BOM'),
+            Tab(
+              icon: Icon(Icons.production_quantity_limits),
+              text: 'Batch Calculator',
+            ),
+          ],
+        ),
+      ),
+      body: TabBarView(
+        controller: _tabController,
+        children: [
+          _buildUploadTab(devicesAsync),
+          _buildBatchCalculatorTab(devicesAsync),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildUploadTab(AsyncValue<List<Device>> devicesAsync) {
+    return SingleChildScrollView(
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // PCB Selection Section
+          _buildPcbSelectionSection(devicesAsync),
+          const SizedBox(height: 24),
+
+          // BOM Format Information
+          _buildFormatInfoSection(),
+          const SizedBox(height: 24),
+
+          // Upload Section
+          _buildUploadSection(),
+          const SizedBox(height: 24),
+
+          // BOM Preview/Edit Section
+          if (_currentBomItems.isNotEmpty) ...[
+            _buildBomPreviewSection(),
+            const SizedBox(height: 24),
+            _buildSaveSection(),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _buildPcbSelectionSection(AsyncValue<List<Device>> devicesAsync) {
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(
+                  Icons.developer_board,
+                  color: Theme.of(context).primaryColor,
+                ),
+                const SizedBox(width: 8),
+                Text(
+                  'Select PCB Board',
+                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ],
             ),
             const SizedBox(height: 16),
 
-            // File Upload Section
-            Card(
-              child: Padding(
-                padding: const EdgeInsets.all(16),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'Upload BOM Excel File',
-                      style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    Text(
-                      'Required format: Sr.No | Reference | Value | Footprint | Qty | Top/Bottom',
-                      style: TextStyle(color: Colors.grey[600], fontSize: 12),
-                    ),
-                    const SizedBox(height: 16),
+            devicesAsync.when(
+              data: (devices) => _buildPcbDropdown(devices),
+              loading: () => const Center(child: CircularProgressIndicator()),
+              error: (error, stack) => Text('Error loading devices: $error'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 
-                    // File Selection
-                    Container(
-                      width: double.infinity,
-                      padding: const EdgeInsets.all(16),
-                      decoration: BoxDecoration(
-                        border: Border.all(
-                          color: _selectedFileName != null
-                              ? Colors.green
-                              : Colors.grey[300]!,
-                          width: 2,
-                          style: BorderStyle.solid,
-                        ),
-                        borderRadius: BorderRadius.circular(8),
-                        color: _selectedFileName != null
-                            ? Colors.green[50]
-                            : Colors.grey[50],
-                      ),
-                      child: Column(
-                        children: [
-                          Icon(
-                            _selectedFileName != null
-                                ? Icons.check_circle
-                                : Icons.upload_file,
-                            size: 48,
-                            color: _selectedFileName != null
-                                ? Colors.green
-                                : Colors.grey[400],
-                          ),
-                          const SizedBox(height: 8),
-                          Text(
-                            _selectedFileName ?? 'No file selected',
-                            style: TextStyle(
-                              fontSize: 16,
-                              fontWeight: FontWeight.w500,
-                              color: _selectedFileName != null
-                                  ? Colors.green[700]
-                                  : Colors.grey[600],
-                            ),
-                          ),
-                          const SizedBox(height: 16),
-                          ElevatedButton.icon(
-                            onPressed: _isLoading ? null : _pickExcelFile,
-                            icon: const Icon(Icons.file_open),
-                            label: const Text('Select Excel File'),
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: Colors.blue[600],
-                              foregroundColor: Colors.white,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                    const SizedBox(height: 16),
+  Widget _buildPcbDropdown(List<Device> devices) {
+    List<DropdownMenuItem<String>> items = [];
 
-                    // Upload Button
-                    SizedBox(
-                      width: double.infinity,
-                      height: 50,
-                      child: ElevatedButton.icon(
-                        onPressed: (_isLoading || _selectedFileName == null)
-                            ? null
-                            : _uploadBom,
-                        icon: _isLoading
-                            ? const SizedBox(
-                                width: 20,
-                                height: 20,
-                                child: CircularProgressIndicator(
-                                  strokeWidth: 2,
-                                  valueColor: AlwaysStoppedAnimation<Color>(
-                                    Colors.white,
-                                  ),
-                                ),
-                              )
-                            : const Icon(Icons.upload),
-                        label: Text(
-                          _isLoading ? 'Processing...' : 'Upload & Process BOM',
-                        ),
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: Colors.green[600],
-                          foregroundColor: Colors.white,
-                        ),
-                      ),
-                    ),
-                  ],
+    for (Device device in devices) {
+      for (PCB pcb in device.pcbs) {
+        items.add(
+          DropdownMenuItem(
+            value: pcb.id,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  '${device.name} - ${pcb.name}',
+                  style: const TextStyle(fontWeight: FontWeight.w500),
                 ),
+                Text(
+                  pcb.hasBOM
+                      ? 'Has BOM (${pcb.uniqueComponents} components)'
+                      : 'No BOM',
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: pcb.hasBOM ? Colors.green : Colors.grey,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      }
+    }
+
+    if (items.isEmpty) {
+      return Container(
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: Colors.orange[50],
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(color: Colors.orange[200]!),
+        ),
+        child: Row(
+          children: [
+            Icon(Icons.info, color: Colors.orange[600]),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'No PCB boards found',
+                    style: TextStyle(
+                      fontWeight: FontWeight.bold,
+                      color: Colors.orange[700],
+                    ),
+                  ),
+                  const Text(
+                    'Create devices with PCB boards first in PCB Creation',
+                    style: TextStyle(fontSize: 12),
+                  ),
+                ],
               ),
             ),
+          ],
+        ),
+      );
+    }
 
-            // BOM Data Display
-            if (_bomData.isNotEmpty) ...[
-              const SizedBox(height: 16),
-              Card(
-                child: Padding(
-                  padding: const EdgeInsets.all(16),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
+    return DropdownButtonFormField<String>(
+      value: _selectedPcbId,
+      decoration: const InputDecoration(
+        labelText: 'Select PCB Board',
+        prefixIcon: Icon(Icons.developer_board),
+      ),
+      items: items,
+      onChanged: (value) {
+        setState(() {
+          _selectedPcbId = value;
+          _selectedDeviceId = _findDeviceIdForPcb(devices, value);
+          _currentBomItems.clear();
+          _hasUnsavedChanges = false;
+        });
+      },
+      validator: (value) {
+        if (value == null || value.isEmpty) {
+          return 'Please select a PCB board';
+        }
+        return null;
+      },
+    );
+  }
+
+  String? _findDeviceIdForPcb(List<Device> devices, String? pcbId) {
+    if (pcbId == null) return null;
+
+    for (Device device in devices) {
+      if (device.pcbs.any((pcb) => pcb.id == pcbId)) {
+        return device.id;
+      }
+    }
+    return null;
+  }
+
+  Widget _buildFormatInfoSection() {
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(Icons.info_outline, color: Theme.of(context).primaryColor),
+                const SizedBox(width: 8),
+                Text(
+                  'BOM File Format',
+                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: Colors.blue[50],
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: Colors.blue[200]!),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    'Required Excel columns (in order):',
+                    style: TextStyle(fontWeight: FontWeight.bold),
+                  ),
+                  const SizedBox(height: 8),
+                  const Text('1. Sr.No - Serial number'),
+                  const Text(
+                    '2. Reference - Component reference (e.g., C1, R1, U1)',
+                  ),
+                  const Text(
+                    '3. Value - Raw material name (must match materials list)',
+                  ),
+                  const Text(
+                    '4. Footprint - Component footprint (e.g., 0805, LQFP64)',
+                  ),
+                  const Text('5. Qty - Quantity required'),
+                  const Text('6. Top/Bottom - PCB layer (top or bottom)'),
+                  const SizedBox(height: 8),
+                  Row(
                     children: [
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          Text(
-                            'BOM Components (${_bomData.length} items)',
-                            style: Theme.of(context).textTheme.titleLarge
-                                ?.copyWith(fontWeight: FontWeight.bold),
-                          ),
-                          Chip(
-                            label: Text(
-                              'Total Qty: ${_bomData.fold(0, (sum, item) => sum + (item['qty'] as int))}',
-                            ),
-                            backgroundColor: Colors.blue[100],
-                          ),
-                        ],
+                      Icon(
+                        Icons.warning_amber,
+                        size: 16,
+                        color: Colors.orange[700],
                       ),
-                      const SizedBox(height: 16),
-
-                      // BOM Table
-                      SingleChildScrollView(
-                        scrollDirection: Axis.horizontal,
-                        child: DataTable(
-                          columns: const [
-                            DataColumn(label: Text('Sr.No')),
-                            DataColumn(label: Text('Reference')),
-                            DataColumn(label: Text('Value')),
-                            DataColumn(label: Text('Footprint')),
-                            DataColumn(label: Text('Qty')),
-                            DataColumn(label: Text('Side')),
-                          ],
-                          rows: _bomData
-                              .map(
-                                (item) => DataRow(
-                                  cells: [
-                                    DataCell(Text(item['srNo'].toString())),
-                                    DataCell(
-                                      Container(
-                                        constraints: const BoxConstraints(
-                                          maxWidth: 80,
-                                        ),
-                                        child: Text(
-                                          item['reference'],
-                                          overflow: TextOverflow.ellipsis,
-                                        ),
-                                      ),
-                                    ),
-                                    DataCell(
-                                      Container(
-                                        constraints: const BoxConstraints(
-                                          maxWidth: 120,
-                                        ),
-                                        child: Text(
-                                          item['value'],
-                                          overflow: TextOverflow.ellipsis,
-                                        ),
-                                      ),
-                                    ),
-                                    DataCell(Text(item['footprint'])),
-                                    DataCell(
-                                      Container(
-                                        padding: const EdgeInsets.symmetric(
-                                          horizontal: 8,
-                                          vertical: 4,
-                                        ),
-                                        decoration: BoxDecoration(
-                                          color: Colors.blue[100],
-                                          borderRadius: BorderRadius.circular(
-                                            12,
-                                          ),
-                                        ),
-                                        child: Text(
-                                          item['qty'].toString(),
-                                          style: TextStyle(
-                                            fontWeight: FontWeight.bold,
-                                            color: Colors.blue[700],
-                                          ),
-                                        ),
-                                      ),
-                                    ),
-                                    DataCell(
-                                      Container(
-                                        padding: const EdgeInsets.symmetric(
-                                          horizontal: 8,
-                                          vertical: 4,
-                                        ),
-                                        decoration: BoxDecoration(
-                                          color: item['topBottom'] == 'Top'
-                                              ? Colors.green[100]
-                                              : Colors.orange[100],
-                                          borderRadius: BorderRadius.circular(
-                                            12,
-                                          ),
-                                        ),
-                                        child: Text(
-                                          item['topBottom'],
-                                          style: TextStyle(
-                                            fontWeight: FontWeight.bold,
-                                            fontSize: 12,
-                                            color: item['topBottom'] == 'Top'
-                                                ? Colors.green[700]
-                                                : Colors.orange[700],
-                                          ),
-                                        ),
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              )
-                              .toList(),
+                      const SizedBox(width: 4),
+                      Expanded(
+                        child: Text(
+                          'Value column must exactly match material names in your inventory',
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: Colors.orange[700],
+                            fontWeight: FontWeight.w500,
+                          ),
                         ),
                       ),
                     ],
                   ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildUploadSection() {
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(Icons.cloud_upload, color: Theme.of(context).primaryColor),
+                const SizedBox(width: 8),
+                Text(
+                  'Upload BOM File',
+                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 16),
+
+            Row(
+              children: [
+                Expanded(
+                  child: CustomButton(
+                    text: AppStrings.uploadBom,
+                    onPressed: (_selectedPcbId != null && !_isLoading)
+                        ? _handleBomUpload
+                        : null,
+                    isLoading: _isLoading,
+                    icon: Icons.upload_file,
+                  ),
+                ),
+                const SizedBox(width: 12),
+                CustomOutlinedButton(
+                  text: 'Template',
+                  onPressed: _downloadTemplate,
+                  icon: Icons.download,
+                ),
+              ],
+            ),
+
+            if (_selectedPcbId == null)
+              Padding(
+                padding: const EdgeInsets.only(top: 8),
+                child: Text(
+                  'Please select a PCB board first',
+                  style: TextStyle(color: Colors.orange[700], fontSize: 12),
+                ),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildBomPreviewSection() {
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Row(
+                  children: [
+                    Icon(Icons.preview, color: Theme.of(context).primaryColor),
+                    const SizedBox(width: 8),
+                    Text(
+                      'BOM Preview',
+                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ],
+                ),
+                Chip(
+                  label: Text('${_currentBomItems.length} components'),
+                  backgroundColor: Theme.of(
+                    context,
+                  ).primaryColor.withOpacity(0.1),
+                ),
+              ],
+            ),
+            const SizedBox(height: 16),
+
+            BomTable(
+              bomItems: _currentBomItems,
+              onItemEdit: _handleBomItemEdit,
+              onItemDelete: _handleBomItemDelete,
+            ),
+
+            const SizedBox(height: 16),
+            _buildMaterialValidationSection(),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildMaterialValidationSection() {
+    final materialsAsync = ref.watch(materialsProvider);
+
+    return materialsAsync.when(
+      data: (materials) {
+        List<String> missingMaterials = [];
+        List<String> availableMaterials = [];
+
+        for (BOMItem item in _currentBomItems) {
+          bool materialExists = materials.any(
+            (m) => m.name.toLowerCase() == item.value.toLowerCase(),
+          );
+
+          if (materialExists) {
+            availableMaterials.add(item.value);
+          } else {
+            missingMaterials.add(item.value);
+          }
+        }
+
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Material Validation',
+              style: Theme.of(
+                context,
+              ).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.bold),
+            ),
+            const SizedBox(height: 8),
+
+            if (availableMaterials.isNotEmpty)
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: Colors.green[50],
+                  borderRadius: BorderRadius.circular(6),
+                ),
+                child: Row(
+                  children: [
+                    Icon(
+                      Icons.check_circle,
+                      color: Colors.green[600],
+                      size: 16,
+                    ),
+                    const SizedBox(width: 8),
+                    Text(
+                      '${availableMaterials.length} materials found in inventory',
+                      style: TextStyle(
+                        color: Colors.green[700],
+                        fontSize: 12,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ],
                 ),
               ),
 
-              const SizedBox(height: 16),
-
-              // Save Button
-              SizedBox(
-                width: double.infinity,
-                height: 50,
-                child: ElevatedButton.icon(
-                  onPressed: _isLoading ? null : _saveBom,
-                  icon: const Icon(Icons.save),
-                  label: const Text('Save BOM'),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.purple[600],
-                    foregroundColor: Colors.white,
-                  ),
+            if (missingMaterials.isNotEmpty) ...[
+              const SizedBox(height: 8),
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: Colors.red[50],
+                  borderRadius: BorderRadius.circular(6),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Icon(Icons.error, color: Colors.red[600], size: 16),
+                        const SizedBox(width: 8),
+                        Text(
+                          '${missingMaterials.length} materials not found in inventory:',
+                          style: TextStyle(
+                            color: Colors.red[700],
+                            fontSize: 12,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      missingMaterials.take(5).join(', ') +
+                          (missingMaterials.length > 5 ? '...' : ''),
+                      style: TextStyle(color: Colors.red[600], fontSize: 11),
+                    ),
+                  ],
                 ),
               ),
             ],
           ],
+        );
+      },
+      loading: () => const SizedBox(),
+      error: (_, __) => const SizedBox(),
+    );
+  }
+
+  Widget _buildSaveSection() {
+    return Card(
+      color: Colors.green[50],
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Row(
+          children: [
+            Icon(Icons.save, color: Colors.green[600]),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Ready to Save',
+                    style: TextStyle(
+                      fontWeight: FontWeight.bold,
+                      color: Colors.green[700],
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    'BOM will be associated with selected PCB board',
+                    style: TextStyle(fontSize: 12, color: Colors.green[600]),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 12),
+            CustomButton(
+              text: AppStrings.saveBom,
+              onPressed: _handleSaveBom,
+              isLoading: _isLoading,
+              backgroundColor: Colors.green,
+            ),
+          ],
         ),
+      ),
+    );
+  }
+
+  Widget _buildBatchCalculatorTab(AsyncValue<List<Device>> devicesAsync) {
+    return devicesAsync.when(
+      data: (devices) => _buildBatchCalculatorContent(devices),
+      loading: () => const Center(child: CircularProgressIndicator()),
+      error: (error, stack) => Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const Icon(Icons.error_outline, size: 64, color: Colors.red),
+            const SizedBox(height: 16),
+            Text('Error: $error'),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildBatchCalculatorContent(List<Device> devices) {
+    List<Device> readyDevices = devices
+        .where((d) => d.isReadyForProduction)
+        .toList();
+
+    if (readyDevices.isEmpty) {
+      return Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(
+              Icons.production_quantity_limits,
+              size: 64,
+              color: Colors.grey[400],
+            ),
+            const SizedBox(height: 16),
+            const Text('No devices ready for production'),
+            const SizedBox(height: 8),
+            const Text(
+              'Upload BOM files for your PCB boards first',
+              style: TextStyle(color: Colors.grey),
+              textAlign: TextAlign.center,
+            ),
+          ],
+        ),
+      );
+    }
+
+    return SingleChildScrollView(
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        children: readyDevices
+            .map((device) => _buildDeviceBatchCard(device))
+            .toList(),
+      ),
+    );
+  }
+
+  Widget _buildDeviceBatchCard(Device device) {
+    return Card(
+      margin: const EdgeInsets.only(bottom: 16),
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    device.name,
+                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ),
+                Chip(
+                  label: Text('${device.totalPcbs} PCBs'),
+                  backgroundColor: Colors.green.withOpacity(0.1),
+                ),
+              ],
+            ),
+            const SizedBox(height: 16),
+
+            Row(
+              children: [
+                Expanded(
+                  child: TextFormField(
+                    keyboardType: TextInputType.number,
+                    decoration: const InputDecoration(
+                      labelText: 'Quantity to Produce',
+                      suffixText: 'units',
+                    ),
+                    onChanged: (value) {
+                      int? quantity = int.tryParse(value);
+                      if (quantity != null && quantity > 0) {
+                        setState(() {});
+                      }
+                    },
+                  ),
+                ),
+                const SizedBox(width: 16),
+                CustomButton(
+                  text: 'Calculate',
+                  onPressed: () =>
+                      _showBatchCalculation(device, 5), // Default 5 units
+                  icon: Icons.calculate,
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _handleBomUpload() async {
+    if (_selectedPcbId == null) return;
+
+    setState(() {
+      _isLoading = true;
+    });
+
+    try {
+      List<BOMItem> bomItems = await ExcelService.importBOM(_selectedPcbId!);
+
+      setState(() {
+        _currentBomItems = bomItems;
+        _hasUnsavedChanges = true;
+        _isLoading = false;
+      });
+
+      if (mounted && bomItems.isNotEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              'BOM imported successfully: ${bomItems.length} components',
+            ),
+            backgroundColor: Colors.green,
+          ),
+        );
+      }
+    } catch (e) {
+      setState(() {
+        _isLoading = false;
+      });
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Import failed: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
+
+  Future<void> _handleSaveBom() async {
+    if (_selectedPcbId == null || _selectedDeviceId == null) return;
+
+    setState(() {
+      _isLoading = true;
+    });
+
+    try {
+      // Create BOM object
+      final bom = BOM(
+        id: DateTime.now().millisecondsSinceEpoch.toString(),
+        name: 'BOM_${DateTime.now().millisecondsSinceEpoch}',
+        pcbId: _selectedPcbId!,
+        items: _currentBomItems,
+        createdAt: DateTime.now(),
+        updatedAt: DateTime.now(),
+      );
+
+      // Save BOM to device
+      ref
+          .read(deviceProvider.notifier)
+          .updatePcbBOM(_selectedDeviceId!, _selectedPcbId!, bom);
+
+      setState(() {
+        _isLoading = false;
+        _hasUnsavedChanges = false;
+      });
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(AppStrings.bomSaved),
+            backgroundColor: Colors.green,
+          ),
+        );
+      }
+    } catch (e) {
+      setState(() {
+        _isLoading = false;
+      });
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Save failed: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
+
+  void _handleBomItemEdit(int index, BOMItem updatedItem) {
+    setState(() {
+      _currentBomItems[index] = updatedItem;
+      _hasUnsavedChanges = true;
+    });
+  }
+
+  void _handleBomItemDelete(int index) {
+    setState(() {
+      _currentBomItems.removeAt(index);
+      _hasUnsavedChanges = true;
+    });
+  }
+
+  void _clearCurrentBOM() {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Clear BOM'),
+        content: const Text(
+          'Are you sure you want to clear the current BOM? This action cannot be undone.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel'),
+          ),
+          CustomButton(
+            text: 'Clear',
+            backgroundColor: Colors.red,
+            onPressed: () {
+              setState(() {
+                _currentBomItems.clear();
+                _hasUnsavedChanges = false;
+              });
+              Navigator.pop(context);
+            },
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _downloadTemplate() async {
+    try {
+      bool success = await ExcelService.createBOMTemplate();
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              success
+                  ? 'BOM template downloaded successfully'
+                  : 'Failed to download template',
+            ),
+            backgroundColor: success ? Colors.green : Colors.red,
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Download failed: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
+
+  void _showBatchCalculation(Device device, int quantity) {
+    final materialsAsync = ref.read(materialsProvider);
+
+    materialsAsync.when(
+      data: (materials) {
+        final feasibility = ref
+            .read(deviceProvider.notifier)
+            .checkProductionFeasibility(device.id, quantity, materials);
+
+        showDialog(
+          context: context,
+          builder: (context) =>
+              _buildBatchCalculationDialog(device, quantity, feasibility),
+        );
+      },
+      loading: () {},
+      error: (_, __) {},
+    );
+  }
+
+  Widget _buildBatchCalculationDialog(
+    Device device,
+    int quantity,
+    Map<String, dynamic> feasibility,
+  ) {
+    bool canProduce = feasibility['canProduce'];
+    Map<String, int> requirements = feasibility['requirements'];
+    Map<String, int> shortages = feasibility['shortages'];
+
+    return AlertDialog(
+      title: Text('Batch Calculation: ${device.name}'),
+      content: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('Quantity: $quantity units'),
+            const SizedBox(height: 16),
+
+            Row(
+              children: [
+                Icon(
+                  canProduce ? Icons.check_circle : Icons.error,
+                  color: canProduce ? Colors.green : Colors.red,
+                ),
+                const SizedBox(width: 8),
+                Text(
+                  canProduce ? 'Production Feasible' : 'Insufficient Materials',
+                  style: TextStyle(
+                    fontWeight: FontWeight.bold,
+                    color: canProduce ? Colors.green : Colors.red,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 16),
+
+            const Text(
+              'Material Requirements:',
+              style: TextStyle(fontWeight: FontWeight.bold),
+            ),
+            const SizedBox(height: 8),
+            ...requirements.entries.map((entry) {
+              String material = entry.key;
+              int required = entry.value;
+              int shortage = shortages[material] ?? 0;
+
+              return Padding(
+                padding: const EdgeInsets.only(bottom: 4),
+                child: Row(
+                  children: [
+                    Expanded(child: Text(material)),
+                    Text('$required units'),
+                    if (shortage > 0) ...[
+                      const SizedBox(width: 8),
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 6,
+                          vertical: 2,
+                        ),
+                        decoration: BoxDecoration(
+                          color: Colors.red[100],
+                          borderRadius: BorderRadius.circular(4),
+                        ),
+                        child: Text(
+                          '-$shortage',
+                          style: const TextStyle(
+                            color: Colors.red,
+                            fontSize: 10,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              );
+            }).toList(),
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: const Text('Close'),
+        ),
+        if (canProduce)
+          CustomButton(
+            text: 'Proceed to Production',
+            onPressed: () {
+              Navigator.pop(context);
+              // Navigate to production screen or handle production
+            },
+          ),
+      ],
+    );
+  }
+
+  void _showHelpDialog() {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('BOM Upload Help'),
+        content: const SingleChildScrollView(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                'How to upload BOM:',
+                style: TextStyle(fontWeight: FontWeight.bold),
+              ),
+              SizedBox(height: 8),
+              Text('1. Select the PCB board from dropdown'),
+              Text('2. Download the Excel template'),
+              Text('3. Fill in your BOM data following the format'),
+              Text('4. Upload the Excel file'),
+              Text('5. Review and edit if needed'),
+              Text('6. Save the BOM'),
+              SizedBox(height: 12),
+              Text(
+                'Important Notes:',
+                style: TextStyle(fontWeight: FontWeight.bold),
+              ),
+              SizedBox(height: 4),
+              Text(
+                '• Value column must match exact material names in inventory',
+              ),
+              Text('• Use "top" or "bottom" for layer column'),
+              Text('• All columns are required'),
+              Text('• Quantity must be positive numbers'),
+            ],
+          ),
+        ),
+        actions: [
+          CustomButton(text: 'Got it', onPressed: () => Navigator.pop(context)),
+        ],
       ),
     );
   }

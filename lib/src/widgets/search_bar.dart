@@ -1,326 +1,189 @@
 import 'package:flutter/material.dart';
 
-class MaterialCard extends StatefulWidget {
-  final String materialName;
-  final String reference;
-  final int totalQuantity;
-  final int remainingQuantity;
-  final int usedQuantity;
-  final String? footprint;
-  final bool isLowStock;
-  final VoidCallback? onEdit;
-  final Function(int)? onQuantityUpdate;
+class SearchBar extends StatelessWidget {
+  final TextEditingController controller;
+  final String hintText;
+  final Function(String)? onChanged;
+  final VoidCallback? onClear;
+  final VoidCallback? onSubmitted;
+  final Widget? prefixIcon;
+  final List<String>? suggestions;
+  final Function(String)? onSuggestionTap;
 
-  const MaterialCard({
-    Key? key,
-    required this.materialName,
-    required this.reference,
-    required this.totalQuantity,
-    required this.remainingQuantity,
-    required this.usedQuantity,
-    this.footprint,
-    this.isLowStock = false,
-    this.onEdit,
-    this.onQuantityUpdate,
-  }) : super(key: key);
-
-  @override
-  State<MaterialCard> createState() => _MaterialCardState();
-}
-
-class _MaterialCardState extends State<MaterialCard> {
-  final TextEditingController _quantityController = TextEditingController();
-  bool _isEditing = false;
-
-  @override
-  void initState() {
-    super.initState();
-    _quantityController.text = widget.remainingQuantity.toString();
-  }
-
-  @override
-  void dispose() {
-    _quantityController.dispose();
-    super.dispose();
-  }
-
-  void _startEditing() {
-    setState(() {
-      _isEditing = true;
-      _quantityController.text = widget.remainingQuantity.toString();
-      _quantityController.selection = TextSelection.fromPosition(
-        TextPosition(offset: _quantityController.text.length),
-      );
-    });
-  }
-
-  void _saveQuantity() {
-    final newQuantity =
-        int.tryParse(_quantityController.text) ?? widget.remainingQuantity;
-    widget.onQuantityUpdate?.call(newQuantity);
-    setState(() {
-      _isEditing = false;
-    });
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('Stock updated successfully!'),
-        backgroundColor: Colors.green,
-        duration: Duration(seconds: 2),
-      ),
-    );
-  }
-
-  void _cancelEditing() {
-    setState(() {
-      _isEditing = false;
-      _quantityController.text = widget.remainingQuantity.toString();
-    });
-  }
+  const SearchBar({
+    super.key,
+    required this.controller,
+    required this.hintText,
+    this.onChanged,
+    this.onClear,
+    this.onSubmitted,
+    this.prefixIcon,
+    this.suggestions,
+    this.onSuggestionTap,
+  });
 
   @override
   Widget build(BuildContext context) {
-    return Card(
-      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-      elevation: 2,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(12),
-        side: widget.isLowStock
-            ? const BorderSide(color: Colors.red, width: 2)
-            : BorderSide.none,
-      ),
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // Header with material name and low stock indicator
-            Row(
-              children: [
-                Expanded(
-                  child: Text(
-                    widget.materialName,
-                    style: const TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                ),
-                if (widget.isLowStock)
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 8,
-                      vertical: 4,
-                    ),
-                    decoration: BoxDecoration(
-                      color: Colors.red,
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: const Text(
-                      'LOW STOCK',
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontSize: 10,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                  ),
-              ],
-            ),
-            const SizedBox(height: 8),
-
-            // Reference
-            Text(
-              'Ref: ${widget.reference}',
-              style: TextStyle(
-                fontSize: 14,
-                color: Colors.grey[600],
-                fontWeight: FontWeight.w500,
+    return Column(
+      children: [
+        Container(
+          decoration: BoxDecoration(
+            color: Colors.grey[50],
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: Colors.grey[300]!),
+          ),
+          child: TextField(
+            controller: controller,
+            onChanged: onChanged,
+            onSubmitted: onSubmitted != null ? (_) => onSubmitted!() : null,
+            decoration: InputDecoration(
+              hintText: hintText,
+              hintStyle: TextStyle(color: Colors.grey[500], fontSize: 14),
+              prefixIcon:
+                  prefixIcon ?? Icon(Icons.search, color: Colors.grey[500]),
+              suffixIcon: controller.text.isNotEmpty
+                  ? IconButton(
+                      icon: Icon(Icons.clear, color: Colors.grey[500]),
+                      onPressed: () {
+                        controller.clear();
+                        onClear?.call();
+                        onChanged?.call('');
+                      },
+                    )
+                  : null,
+              border: InputBorder.none,
+              contentPadding: const EdgeInsets.symmetric(
+                horizontal: 16,
+                vertical: 12,
               ),
             ),
-
-            if (widget.footprint != null) ...[
-              const SizedBox(height: 4),
-              Text(
-                'Footprint: ${widget.footprint}',
-                style: TextStyle(fontSize: 14, color: Colors.grey[600]),
-              ),
-            ],
-
-            const SizedBox(height: 16),
-
-            // Quantity Information
-            Row(
-              children: [
-                // Total Quantity
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        'Total',
-                        style: TextStyle(fontSize: 12, color: Colors.grey[600]),
-                      ),
-                      Text(
-                        widget.totalQuantity.toString(),
-                        style: const TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-
-                // Used Quantity
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        'Used',
-                        style: TextStyle(fontSize: 12, color: Colors.grey[600]),
-                      ),
-                      Text(
-                        widget.usedQuantity.toString(),
-                        style: const TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.bold,
-                          color: Colors.orange,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-
-                // Remaining Quantity (Editable)
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        'Remaining',
-                        style: TextStyle(fontSize: 12, color: Colors.grey[600]),
-                      ),
-                      if (_isEditing) ...[
-                        Row(
-                          children: [
-                            Expanded(
-                              child: TextField(
-                                controller: _quantityController,
-                                keyboardType: TextInputType.number,
-                                style: const TextStyle(
-                                  fontSize: 16,
-                                  fontWeight: FontWeight.bold,
-                                ),
-                                decoration: const InputDecoration(
-                                  border: OutlineInputBorder(),
-                                  contentPadding: EdgeInsets.symmetric(
-                                    horizontal: 8,
-                                    vertical: 4,
-                                  ),
-                                  isDense: true,
-                                ),
-                                autofocus: true,
-                                onSubmitted: (_) => _saveQuantity(),
-                              ),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 8),
-                        Row(
-                          children: [
-                            IconButton(
-                              onPressed: _saveQuantity,
-                              icon: const Icon(
-                                Icons.check,
-                                color: Colors.green,
-                              ),
-                              iconSize: 20,
-                              padding: EdgeInsets.zero,
-                              constraints: const BoxConstraints(),
-                            ),
-                            const SizedBox(width: 8),
-                            IconButton(
-                              onPressed: _cancelEditing,
-                              icon: const Icon(Icons.close, color: Colors.red),
-                              iconSize: 20,
-                              padding: EdgeInsets.zero,
-                              constraints: const BoxConstraints(),
-                            ),
-                          ],
-                        ),
-                      ] else ...[
-                        GestureDetector(
-                          onTap: _startEditing,
-                          child: Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 8,
-                              vertical: 4,
-                            ),
-                            decoration: BoxDecoration(
-                              color: widget.isLowStock
-                                  ? Colors.red[50]
-                                  : Colors.blue[50],
-                              borderRadius: BorderRadius.circular(4),
-                              border: Border.all(
-                                color: widget.isLowStock
-                                    ? Colors.red
-                                    : Colors.blue,
-                                width: 1,
-                              ),
-                            ),
-                            child: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Text(
-                                  widget.remainingQuantity.toString(),
-                                  style: TextStyle(
-                                    fontSize: 16,
-                                    fontWeight: FontWeight.bold,
-                                    color: widget.isLowStock
-                                        ? Colors.red
-                                        : Colors.blue,
-                                  ),
-                                ),
-                                const SizedBox(width: 4),
-                                Icon(
-                                  Icons.edit,
-                                  size: 14,
-                                  color: widget.isLowStock
-                                      ? Colors.red
-                                      : Colors.blue,
-                                ),
-                              ],
-                            ),
-                          ),
-                        ),
-                      ],
-                    ],
-                  ),
-                ),
-              ],
-            ),
-
-            // Progress Bar
-            const SizedBox(height: 12),
-            LinearProgressIndicator(
-              value: widget.totalQuantity > 0
-                  ? (widget.totalQuantity - widget.remainingQuantity) /
-                        widget.totalQuantity
-                  : 0,
-              backgroundColor: Colors.grey[300],
-              valueColor: AlwaysStoppedAnimation<Color>(
-                widget.isLowStock ? Colors.red : Colors.green,
-              ),
-            ),
-            const SizedBox(height: 4),
-            Text(
-              '${((widget.totalQuantity - widget.remainingQuantity) / (widget.totalQuantity > 0 ? widget.totalQuantity : 1) * 100).toStringAsFixed(1)}% used',
-              style: TextStyle(fontSize: 12, color: Colors.grey[600]),
-            ),
-          ],
+          ),
         ),
+
+        // Suggestions dropdown
+        if (suggestions != null &&
+            suggestions!.isNotEmpty &&
+            controller.text.isNotEmpty)
+          Container(
+            margin: const EdgeInsets.only(top: 4),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(8),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.grey.withOpacity(0.2),
+                  blurRadius: 4,
+                  offset: const Offset(0, 2),
+                ),
+              ],
+            ),
+            constraints: const BoxConstraints(maxHeight: 200),
+            child: ListView.builder(
+              shrinkWrap: true,
+              itemCount: suggestions!.length,
+              itemBuilder: (context, index) {
+                final suggestion = suggestions![index];
+                return ListTile(
+                  dense: true,
+                  leading: const Icon(Icons.search, size: 16),
+                  title: Text(suggestion, style: const TextStyle(fontSize: 14)),
+                  onTap: () {
+                    controller.text = suggestion;
+                    onSuggestionTap?.call(suggestion);
+                    onChanged?.call(suggestion);
+                  },
+                );
+              },
+            ),
+          ),
+      ],
+    );
+  }
+}
+
+class CustomSearchDelegate extends SearchDelegate<String> {
+  final List<String> suggestions;
+  final Function(String) onSearch;
+
+  CustomSearchDelegate({required this.suggestions, required this.onSearch});
+
+  @override
+  List<Widget> buildActions(BuildContext context) {
+    return [
+      IconButton(
+        icon: const Icon(Icons.clear),
+        onPressed: () {
+          query = '';
+          showSuggestions(context);
+        },
       ),
+    ];
+  }
+
+  @override
+  Widget buildLeading(BuildContext context) {
+    return IconButton(
+      icon: const Icon(Icons.arrow_back),
+      onPressed: () {
+        close(context, '');
+      },
+    );
+  }
+
+  @override
+  Widget buildResults(BuildContext context) {
+    onSearch(query);
+    close(context, query);
+    return const SizedBox.shrink();
+  }
+
+  @override
+  Widget buildSuggestions(BuildContext context) {
+    final filteredSuggestions = suggestions
+        .where(
+          (suggestion) =>
+              suggestion.toLowerCase().contains(query.toLowerCase()),
+        )
+        .take(10)
+        .toList();
+
+    return ListView.builder(
+      itemCount: filteredSuggestions.length,
+      itemBuilder: (context, index) {
+        final suggestion = filteredSuggestions[index];
+        return ListTile(
+          leading: const Icon(Icons.search),
+          title: RichText(
+            text: TextSpan(
+              text: suggestion.substring(
+                0,
+                suggestion.toLowerCase().indexOf(query.toLowerCase()),
+              ),
+              style: const TextStyle(color: Colors.black54),
+              children: [
+                TextSpan(
+                  text: query,
+                  style: const TextStyle(
+                    color: Colors.black,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                TextSpan(
+                  text: suggestion.substring(
+                    suggestion.toLowerCase().indexOf(query.toLowerCase()) +
+                        query.length,
+                  ),
+                  style: const TextStyle(color: Colors.black54),
+                ),
+              ],
+            ),
+          ),
+          onTap: () {
+            query = suggestion;
+            showResults(context);
+          },
+        );
+      },
     );
   }
 }

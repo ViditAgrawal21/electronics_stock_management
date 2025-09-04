@@ -1,128 +1,78 @@
-import 'dart:convert';
-
 class User {
+  final String id;
   final String username;
-  final String password;
-  final DateTime? lastLoginTime;
-  final bool isLoggedIn;
+  final DateTime loginTime;
+  final DateTime? lastActivity;
 
-  const User({
+  User({
+    required this.id,
     required this.username,
-    required this.password,
-    this.lastLoginTime,
-    this.isLoggedIn = false,
+    required this.loginTime,
+    this.lastActivity,
   });
 
-  // Create a copy of User with updated fields
-  User copyWith({
-    String? username,
-    String? password,
-    DateTime? lastLoginTime,
-    bool? isLoggedIn,
-  }) {
+  // Check if user is currently active (within last 30 minutes)
+  bool get isActive {
+    if (lastActivity == null) return false;
+    return DateTime.now().difference(lastActivity!).inMinutes <= 30;
+  }
+
+  // Get session duration
+  Duration get sessionDuration {
+    final endTime = lastActivity ?? DateTime.now();
+    return endTime.difference(loginTime);
+  }
+
+  // Create from JSON
+  factory User.fromJson(Map<String, dynamic> json) {
     return User(
-      username: username ?? this.username,
-      password: password ?? this.password,
-      lastLoginTime: lastLoginTime ?? this.lastLoginTime,
-      isLoggedIn: isLoggedIn ?? this.isLoggedIn,
+      id: json['id'] ?? '',
+      username: json['username'] ?? '',
+      loginTime: DateTime.parse(
+        json['loginTime'] ?? DateTime.now().toIso8601String(),
+      ),
+      lastActivity: json['lastActivity'] != null
+          ? DateTime.parse(json['lastActivity'])
+          : null,
     );
   }
 
-  // Convert User to Map for storage
-  Map<String, dynamic> toMap() {
+  // Convert to JSON
+  Map<String, dynamic> toJson() {
     return {
+      'id': id,
       'username': username,
-      'password': password,
-      'lastLoginTime': lastLoginTime?.millisecondsSinceEpoch,
-      'isLoggedIn': isLoggedIn,
+      'loginTime': loginTime.toIso8601String(),
+      'lastActivity': lastActivity?.toIso8601String(),
     };
   }
 
-  // Create User from Map
-  factory User.fromMap(Map<String, dynamic> map) {
+  // Copy with method
+  User copyWith({
+    String? id,
+    String? username,
+    DateTime? loginTime,
+    DateTime? lastActivity,
+  }) {
     return User(
-      username: map['username'] ?? '',
-      password: map['password'] ?? '',
-      lastLoginTime: map['lastLoginTime'] != null 
-          ? DateTime.fromMillisecondsSinceEpoch(map['lastLoginTime'])
-          : null,
-      isLoggedIn: map['isLoggedIn'] ?? false,
+      id: id ?? this.id,
+      username: username ?? this.username,
+      loginTime: loginTime ?? this.loginTime,
+      lastActivity: lastActivity ?? this.lastActivity,
     );
-  }
-
-  // Convert to JSON string
-  String toJson() => jsonEncode(toMap());
-
-  // Create User from JSON string
-  factory User.fromJson(String source) => User.fromMap(jsonDecode(source));
-
-  // Default hardcoded user for your in-house team
-  static const User defaultUser = User(
-    username: 'TWAIPL',
-    password: '1234',
-  );
-
-  // Validate login credentials
-  bool validateCredentials(String inputUsername, String inputPassword) {
-    return username.toLowerCase() == inputUsername.toLowerCase() && 
-           password == inputPassword;
-  }
-
-  // Check if user session is still valid (optional for future use)
-  bool isSessionValid({Duration sessionDuration = const Duration(hours: 8)}) {
-    if (!isLoggedIn || lastLoginTime == null) return false;
-    
-    final now = DateTime.now();
-    final sessionExpiry = lastLoginTime!.add(sessionDuration);
-    
-    return now.isBefore(sessionExpiry);
   }
 
   @override
   String toString() {
-    return 'User(username: $username, isLoggedIn: $isLoggedIn, lastLoginTime: $lastLoginTime)';
+    return 'User(id: $id, username: $username, active: $isActive)';
   }
 
   @override
   bool operator ==(Object other) {
     if (identical(this, other)) return true;
-  
-    return other is User &&
-      other.username == username &&
-      other.password == password &&
-      other.lastLoginTime == lastLoginTime &&
-      other.isLoggedIn == isLoggedIn;
+    return other is User && other.id == id;
   }
 
   @override
-  int get hashCode {
-    return username.hashCode ^
-      password.hashCode ^
-      lastLoginTime.hashCode ^
-      isLoggedIn.hashCode;
-  }
-}
-
-// Extension for easy user operations
-extension UserExtension on User {
-  // Get display name (capitalize first letter)
-  String get displayName {
-    if (username.isEmpty) return '';
-    return username[0].toUpperCase() + username.substring(1).toLowerCase();
-  }
-
-  // Get login status message
-  String get statusMessage {
-    if (!isLoggedIn) return 'Not logged in';
-    if (lastLoginTime == null) return 'Logged in';
-    
-    final now = DateTime.now();
-    final difference = now.difference(lastLoginTime!);
-    
-    if (difference.inMinutes < 1) return 'Just logged in';
-    if (difference.inHours < 1) return 'Logged in ${difference.inMinutes}m ago';
-    if (difference.inDays < 1) return 'Logged in ${difference.inHours}h ago';
-    
-    return 'Logged in ${difference.inDays}d ago';
-  }
+  int get hashCode => id.hashCode;
 }
