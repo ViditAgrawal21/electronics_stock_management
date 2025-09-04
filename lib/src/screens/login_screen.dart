@@ -222,29 +222,29 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                           ),
                           child: Column(
                             children: [
-                              Icon(
-                                Icons.info_outline,
-                                color: Colors.blue[700],
-                                size: 20,
-                              ),
-                              const SizedBox(height: 4),
-                              Text(
-                                'Demo Credentials',
-                                style: TextStyle(
-                                  fontWeight: FontWeight.bold,
-                                  color: Colors.blue[700],
-                                ),
-                              ),
-                              const SizedBox(height: 4),
-                              Text(
-                                'Username: ${AppConfig.defaultUsername}\nPassword: ${AppConfig.defaultPassword}',
-                                textAlign: TextAlign.center,
-                                style: TextStyle(
-                                  fontSize: 12,
-                                  color: Colors.blue[600],
-                                  fontFamily: 'monospace',
-                                ),
-                              ),
+                              // Icon(
+                              //   Icons.info_outline,
+                              //   color: Colors.blue[700],
+                              //   size: 20,
+                              // ),
+                              // const SizedBox(height: 4),
+                              // Text(
+                              //   'Demo Credentials',
+                              //   style: TextStyle(
+                              //     fontWeight: FontWeight.bold,
+                              //     color: Colors.blue[700],
+                              //   ),
+                              // ),
+                              // const SizedBox(height: 4),
+                              // Text(
+                              //   'Username: ${AppConfig.defaultUsername}\nPassword: ${AppConfig.defaultPassword}',
+                              //   textAlign: TextAlign.center,
+                              //   style: TextStyle(
+                              //     fontSize: 12,
+                              //     color: Colors.blue[600],
+                              //     fontFamily: 'monospace',
+                              //   ),
+                              // ),
                             ],
                           ),
                         ),
