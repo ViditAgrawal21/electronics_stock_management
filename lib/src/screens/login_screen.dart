@@ -213,41 +213,41 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                         const SizedBox(height: 16),
 
                         // Demo Credentials Info
-                        Container(
-                          padding: const EdgeInsets.all(12),
-                          decoration: BoxDecoration(
-                            color: Colors.blue[50],
-                            borderRadius: BorderRadius.circular(8),
-                            border: Border.all(color: Colors.blue[200]!),
-                          ),
-                          child: Column(
-                            children: [
-                              // Icon(
-                              //   Icons.info_outline,
-                              //   color: Colors.blue[700],
-                              //   size: 20,
-                              // ),
-                              // const SizedBox(height: 4),
-                              // Text(
-                              //   'Demo Credentials',
-                              //   style: TextStyle(
-                              //     fontWeight: FontWeight.bold,
-                              //     color: Colors.blue[700],
-                              //   ),
-                              // ),
-                              // const SizedBox(height: 4),
-                              // Text(
-                              //   'Username: ${AppConfig.defaultUsername}\nPassword: ${AppConfig.defaultPassword}',
-                              //   textAlign: TextAlign.center,
-                              //   style: TextStyle(
-                              //     fontSize: 12,
-                              //     color: Colors.blue[600],
-                              //     fontFamily: 'monospace',
-                              //   ),
-                              // ),
-                            ],
-                          ),
-                        ),
+                        // Container(
+                        //   padding: const EdgeInsets.all(12),
+                        //   decoration: BoxDecoration(
+                        //     color: Colors.blue[50],
+                        //     borderRadius: BorderRadius.circular(8),
+                        //     border: Border.all(color: Colors.blue[200]!),
+                        //   ),
+                        //   child: Column(
+                        //     children: [
+                        //       // Icon(
+                        //       //   Icons.info_outline,
+                        //       //   color: Colors.blue[700],
+                        //       //   size: 20,
+                        //       // ),
+                        //       // const SizedBox(height: 4),
+                        //       // Text(
+                        //       //   'Demo Credentials',
+                        //       //   style: TextStyle(
+                        //       //     fontWeight: FontWeight.bold,
+                        //       //     color: Colors.blue[700],
+                        //       //   ),
+                        //       // ),
+                        //       // const SizedBox(height: 4),
+                        //       // Text(
+                        //       //   'Username: ${AppConfig.defaultUsername}\nPassword: ${AppConfig.defaultPassword}',
+                        //       //   textAlign: TextAlign.center,
+                        //       //   style: TextStyle(
+                        //       //     fontSize: 12,
+                        //       //     color: Colors.blue[600],
+                        //       //     fontFamily: 'monospace',
+                        //       //   ),
+                        //       // ),
+                        //     ],
+                        //   ),
+                        // ),
                       ],
                     ),
                   ),
