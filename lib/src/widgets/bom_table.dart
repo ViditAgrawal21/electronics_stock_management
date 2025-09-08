@@ -211,85 +211,94 @@ class BomTable extends StatelessWidget {
     final quantityController = TextEditingController(
       text: item.quantity.toString(),
     );
-    String selectedLayer = item.layer;
+
+    // Fix: Ensure the layer value is valid
+    String selectedLayer = item.layer.toLowerCase();
+    if (!['top', 'bottom'].contains(selectedLayer)) {
+      selectedLayer = 'top'; // Default to 'top' if invalid
+    }
 
     showDialog(
       context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Edit BOM Item'),
-        content: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              TextFormField(
-                controller: serialController,
-                decoration: const InputDecoration(labelText: 'Serial Number'),
-                keyboardType: TextInputType.number,
-              ),
-              const SizedBox(height: 12),
-              TextFormField(
-                controller: referenceController,
-                decoration: const InputDecoration(labelText: 'Reference'),
-              ),
-              const SizedBox(height: 12),
-              TextFormField(
-                controller: valueController,
-                decoration: const InputDecoration(
-                  labelText: 'Value (Material Name)',
+      builder: (context) => StatefulBuilder(
+        builder: (context, setState) => AlertDialog(
+          title: const Text('Edit BOM Item'),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                TextFormField(
+                  controller: serialController,
+                  decoration: const InputDecoration(labelText: 'Serial Number'),
+                  keyboardType: TextInputType.number,
                 ),
-              ),
-              const SizedBox(height: 12),
-              TextFormField(
-                controller: footprintController,
-                decoration: const InputDecoration(labelText: 'Footprint'),
-              ),
-              const SizedBox(height: 12),
-              TextFormField(
-                controller: quantityController,
-                decoration: const InputDecoration(labelText: 'Quantity'),
-                keyboardType: TextInputType.number,
-              ),
-              const SizedBox(height: 12),
-              DropdownButtonFormField<String>(
-                value: selectedLayer,
-                decoration: const InputDecoration(labelText: 'Layer'),
-                items: const [
-                  DropdownMenuItem(value: 'top', child: Text('Top')),
-                  DropdownMenuItem(value: 'bottom', child: Text('Bottom')),
-                ],
-                onChanged: (value) {
-                  if (value != null) {
-                    selectedLayer = value;
-                  }
-                },
-              ),
-            ],
+                const SizedBox(height: 12),
+                TextFormField(
+                  controller: referenceController,
+                  decoration: const InputDecoration(labelText: 'Reference'),
+                ),
+                const SizedBox(height: 12),
+                TextFormField(
+                  controller: valueController,
+                  decoration: const InputDecoration(
+                    labelText: 'Value (Material Name)',
+                  ),
+                ),
+                const SizedBox(height: 12),
+                TextFormField(
+                  controller: footprintController,
+                  decoration: const InputDecoration(labelText: 'Footprint'),
+                ),
+                const SizedBox(height: 12),
+                TextFormField(
+                  controller: quantityController,
+                  decoration: const InputDecoration(labelText: 'Quantity'),
+                  keyboardType: TextInputType.number,
+                ),
+                const SizedBox(height: 12),
+                DropdownButtonFormField<String>(
+                  value: selectedLayer,
+                  decoration: const InputDecoration(labelText: 'Layer'),
+                  items: const [
+                    DropdownMenuItem(value: 'top', child: Text('Top')),
+                    DropdownMenuItem(value: 'bottom', child: Text('Bottom')),
+                  ],
+                  onChanged: (value) {
+                    if (value != null) {
+                      setState(() {
+                        selectedLayer = value;
+                      });
+                    }
+                  },
+                ),
+              ],
+            ),
           ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(),
-            child: const Text('Cancel'),
-          ),
-          ElevatedButton(
-            onPressed: () {
-              final updatedItem = item.copyWith(
-                serialNumber:
-                    int.tryParse(serialController.text) ?? item.serialNumber,
-                reference: referenceController.text.trim(),
-                value: valueController.text.trim(),
-                footprint: footprintController.text.trim(),
-                quantity:
-                    int.tryParse(quantityController.text) ?? item.quantity,
-                layer: selectedLayer,
-              );
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text('Cancel'),
+            ),
+            ElevatedButton(
+              onPressed: () {
+                final updatedItem = item.copyWith(
+                  serialNumber:
+                      int.tryParse(serialController.text) ?? item.serialNumber,
+                  reference: referenceController.text.trim(),
+                  value: valueController.text.trim(),
+                  footprint: footprintController.text.trim(),
+                  quantity:
+                      int.tryParse(quantityController.text) ?? item.quantity,
+                  layer: selectedLayer,
+                );
 
-              onItemEdit?.call(index, updatedItem);
-              Navigator.of(context).pop();
-            },
-            child: const Text('Save'),
-          ),
-        ],
+                onItemEdit?.call(index, updatedItem);
+                Navigator.of(context).pop();
+              },
+              child: const Text('Save'),
+            ),
+          ],
+        ),
       ),
     );
   }

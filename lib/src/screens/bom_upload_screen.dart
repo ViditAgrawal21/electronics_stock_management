@@ -13,8 +13,16 @@ import '../widgets/bom_table.dart';
 class BomUploadScreen extends ConsumerStatefulWidget {
   final String? pcbId;
   final String? pcbName;
+  final Device? tempDevice; // Temporary device state from PCB creation
+  final int? pcbIndex; // Index of PCB in the temp device
 
-  const BomUploadScreen({super.key, this.pcbId, this.pcbName});
+  const BomUploadScreen({
+    super.key,
+    this.pcbId,
+    this.pcbName,
+    this.tempDevice,
+    this.pcbIndex,
+  });
 
   @override
   ConsumerState<BomUploadScreen> createState() => _BomUploadScreenState();
@@ -29,12 +37,31 @@ class _BomUploadScreenState extends ConsumerState<BomUploadScreen>
   String? _selectedDeviceId;
   bool _isLoading = false;
   bool _hasUnsavedChanges = false;
+  bool _isWorkingWithTempDevice = false;
+  List<PCB> _tempPcbs = []; // Store temp PCBs for display
 
   @override
   void initState() {
     super.initState();
     _tabController = TabController(length: 2, vsync: this);
-    _selectedPcbId = widget.pcbId;
+
+    // Initialize with passed parameters or temp device
+    if (widget.tempDevice != null) {
+      _isWorkingWithTempDevice = true;
+      _tempPcbs = List.from(widget.tempDevice!.pcbs);
+      _selectedPcbId = widget.pcbId;
+      _selectedDeviceId = widget.tempDevice!.id;
+
+      // Load existing BOM if PCB has one
+      if (widget.pcbIndex != null && widget.pcbIndex! < _tempPcbs.length) {
+        final pcb = _tempPcbs[widget.pcbIndex!];
+        if (pcb.bom != null) {
+          _currentBomItems = List.from(pcb.bom!.items);
+        }
+      }
+    } else {
+      _selectedPcbId = widget.pcbId;
+    }
   }
 
   @override
@@ -45,70 +72,80 @@ class _BomUploadScreenState extends ConsumerState<BomUploadScreen>
 
   @override
   Widget build(BuildContext context) {
-    final devicesAsync = ref.watch(deviceProvider);
+    final devicesAsync = _isWorkingWithTempDevice
+        ? AsyncValue.data([widget.tempDevice!])
+        : ref.watch(deviceProvider);
 
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text(AppStrings.bomUploadTitle),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.help_outline),
-            onPressed: _showHelpDialog,
-            tooltip: 'Help',
-          ),
-          PopupMenuButton<String>(
-            onSelected: (value) async {
-              switch (value) {
-                case 'template':
-                  await _downloadTemplate();
-                  break;
-                case 'clear':
-                  _clearCurrentBOM();
-                  break;
-              }
-            },
-            itemBuilder: (context) => [
-              const PopupMenuItem(
-                value: 'template',
-                child: Row(
-                  children: [
-                    Icon(Icons.download),
-                    SizedBox(width: 8),
-                    Text('Download Template'),
-                  ],
-                ),
-              ),
-              if (_currentBomItems.isNotEmpty)
+    return WillPopScope(
+      onWillPop: () async {
+        if (_hasUnsavedChanges) {
+          return await _showUnsavedChangesDialog() ?? false;
+        }
+        return true;
+      },
+      child: Scaffold(
+        appBar: AppBar(
+          title: const Text(AppStrings.bomUploadTitle),
+          actions: [
+            IconButton(
+              icon: const Icon(Icons.help_outline),
+              onPressed: _showHelpDialog,
+              tooltip: 'Help',
+            ),
+            PopupMenuButton<String>(
+              onSelected: (value) async {
+                switch (value) {
+                  case 'template':
+                    await _downloadTemplate();
+                    break;
+                  case 'clear':
+                    _clearCurrentBOM();
+                    break;
+                }
+              },
+              itemBuilder: (context) => [
                 const PopupMenuItem(
-                  value: 'clear',
+                  value: 'template',
                   child: Row(
                     children: [
-                      Icon(Icons.clear_all),
+                      Icon(Icons.download),
                       SizedBox(width: 8),
-                      Text('Clear BOM'),
+                      Text('Download Template'),
                     ],
                   ),
                 ),
-            ],
-          ),
-        ],
-        bottom: TabBar(
-          controller: _tabController,
-          tabs: const [
-            Tab(icon: Icon(Icons.upload_file), text: 'Upload BOM'),
-            Tab(
-              icon: Icon(Icons.production_quantity_limits),
-              text: 'Batch Calculator',
+                if (_currentBomItems.isNotEmpty)
+                  const PopupMenuItem(
+                    value: 'clear',
+                    child: Row(
+                      children: [
+                        Icon(Icons.clear_all),
+                        SizedBox(width: 8),
+                        Text('Clear BOM'),
+                      ],
+                    ),
+                  ),
+              ],
             ),
           ],
+          bottom: TabBar(
+            controller: _tabController,
+            tabs: const [
+              Tab(icon: Icon(Icons.upload_file), text: 'Upload BOM'),
+              Tab(
+                icon: Icon(Icons.production_quantity_limits),
+                text: 'Batch Calculator',
+              ),
+            ],
+          ),
         ),
-      ),
-      body: TabBarView(
-        controller: _tabController,
-        children: [
-          _buildUploadTab(devicesAsync),
-          _buildBatchCalculatorTab(devicesAsync),
-        ],
+        body: TabBarView(
+          controller: _tabController,
+          children: [
+            _buildUploadTab(devicesAsync),
+            _buildBatchCalculatorTab(devicesAsync),
+          ],
+        ),
       ),
     );
   }
@@ -119,6 +156,9 @@ class _BomUploadScreenState extends ConsumerState<BomUploadScreen>
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          // Working mode indicator
+          if (_isWorkingWithTempDevice) _buildTempModeIndicator(),
+
           // PCB Selection Section
           _buildPcbSelectionSection(devicesAsync),
           const SizedBox(height: 24),
@@ -137,6 +177,42 @@ class _BomUploadScreenState extends ConsumerState<BomUploadScreen>
             const SizedBox(height: 24),
             _buildSaveSection(),
           ],
+        ],
+      ),
+    );
+  }
+
+  Widget _buildTempModeIndicator() {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 16),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: Colors.blue[50],
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: Colors.blue[200]!),
+      ),
+      child: Row(
+        children: [
+          Icon(Icons.info_outline, color: Colors.blue[600]),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Working with Device: ${widget.tempDevice?.name}',
+                  style: TextStyle(
+                    fontWeight: FontWeight.bold,
+                    color: Colors.blue[700],
+                  ),
+                ),
+                const Text(
+                  'Changes will be saved to your device creation process',
+                  style: TextStyle(fontSize: 12),
+                ),
+              ],
+            ),
+          ),
         ],
       ),
     );
@@ -180,14 +256,9 @@ class _BomUploadScreenState extends ConsumerState<BomUploadScreen>
   Widget _buildPcbDropdown(List<Device> devices) {
     List<DropdownMenuItem<String>> items = [];
 
-    // Debug: Print available devices
-    print('Available devices: ${devices.length}');
-    for (Device device in devices) {
-      print('Device: ${device.name} with ${device.pcbs.length} PCBs');
-    }
-
-    for (Device device in devices) {
-      for (PCB pcb in device.pcbs) {
+    if (_isWorkingWithTempDevice && widget.tempDevice != null) {
+      // Show PCBs from temp device
+      for (PCB pcb in _tempPcbs) {
         items.add(
           DropdownMenuItem(
             value: pcb.id,
@@ -196,7 +267,7 @@ class _BomUploadScreenState extends ConsumerState<BomUploadScreen>
               mainAxisSize: MainAxisSize.min,
               children: [
                 Text(
-                  '${device.name} - ${pcb.name}',
+                  '${widget.tempDevice!.name} - ${pcb.name}',
                   style: const TextStyle(fontWeight: FontWeight.w500),
                 ),
                 Text(
@@ -212,6 +283,36 @@ class _BomUploadScreenState extends ConsumerState<BomUploadScreen>
             ),
           ),
         );
+      }
+    } else {
+      // Show PCBs from existing devices
+      for (Device device in devices) {
+        for (PCB pcb in device.pcbs) {
+          items.add(
+            DropdownMenuItem(
+              value: pcb.id,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    '${device.name} - ${pcb.name}',
+                    style: const TextStyle(fontWeight: FontWeight.w500),
+                  ),
+                  Text(
+                    pcb.hasBOM
+                        ? 'Has BOM (${pcb.uniqueComponents} components)'
+                        : 'No BOM',
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: pcb.hasBOM ? Colors.green : Colors.grey,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          );
+        }
       }
     }
 
@@ -240,9 +341,11 @@ class _BomUploadScreenState extends ConsumerState<BomUploadScreen>
                           color: Colors.orange[700],
                         ),
                       ),
-                      const Text(
-                        'Create devices with PCB boards first in PCB Creation',
-                        style: TextStyle(fontSize: 12),
+                      Text(
+                        _isWorkingWithTempDevice
+                            ? 'Add PCB boards in the device creation screen first'
+                            : 'Create devices with PCB boards first in PCB Creation',
+                        style: const TextStyle(fontSize: 12),
                       ),
                     ],
                   ),
@@ -250,15 +353,16 @@ class _BomUploadScreenState extends ConsumerState<BomUploadScreen>
               ],
             ),
           ),
-          const SizedBox(height: 16),
-          CustomButton(
-            text: 'Go to PCB Creation',
-            onPressed: () {
-              Navigator.pop(context);
-              // Navigate to PCB creation
-            },
-            icon: Icons.add_circle,
-          ),
+          if (!_isWorkingWithTempDevice) ...[
+            const SizedBox(height: 16),
+            CustomButton(
+              text: 'Go to PCB Creation',
+              onPressed: () {
+                Navigator.pop(context);
+              },
+              icon: Icons.add_circle,
+            ),
+          ],
         ],
       );
     }
@@ -273,8 +377,12 @@ class _BomUploadScreenState extends ConsumerState<BomUploadScreen>
       onChanged: (value) {
         setState(() {
           _selectedPcbId = value;
-          _selectedDeviceId = _findDeviceIdForPcb(devices, value);
-          _currentBomItems.clear();
+          if (!_isWorkingWithTempDevice) {
+            _selectedDeviceId = _findDeviceIdForPcb(devices, value);
+          }
+
+          // Load existing BOM if switching PCBs
+          _loadExistingBomForPcb(value);
           _hasUnsavedChanges = false;
         });
       },
@@ -285,6 +393,30 @@ class _BomUploadScreenState extends ConsumerState<BomUploadScreen>
         return null;
       },
     );
+  }
+
+  void _loadExistingBomForPcb(String? pcbId) {
+    if (pcbId == null) {
+      _currentBomItems.clear();
+      return;
+    }
+
+    if (_isWorkingWithTempDevice) {
+      // Load from temp PCBs
+      final pcb = _tempPcbs.firstWhere(
+        (p) => p.id == pcbId,
+        orElse: () => _tempPcbs.first,
+      );
+
+      if (pcb.bom != null) {
+        _currentBomItems = List.from(pcb.bom!.items);
+      } else {
+        _currentBomItems.clear();
+      }
+    } else {
+      // Load from existing devices (existing logic)
+      _currentBomItems.clear();
+    }
   }
 
   String? _findDeviceIdForPcb(List<Device> devices, String? pcbId) {
@@ -592,7 +724,9 @@ class _BomUploadScreenState extends ConsumerState<BomUploadScreen>
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    'Ready to Save',
+                    _isWorkingWithTempDevice
+                        ? 'Ready to Update'
+                        : 'Ready to Save',
                     style: TextStyle(
                       fontWeight: FontWeight.bold,
                       color: Colors.green[700],
@@ -600,7 +734,9 @@ class _BomUploadScreenState extends ConsumerState<BomUploadScreen>
                   ),
                   const SizedBox(height: 2),
                   Text(
-                    'BOM will be associated with selected PCB board',
+                    _isWorkingWithTempDevice
+                        ? 'BOM will be updated in your device creation'
+                        : 'BOM will be associated with selected PCB board',
                     style: TextStyle(fontSize: 12, color: Colors.green[600]),
                   ),
                 ],
@@ -608,7 +744,9 @@ class _BomUploadScreenState extends ConsumerState<BomUploadScreen>
             ),
             const SizedBox(width: 12),
             CustomButton(
-              text: AppStrings.saveBom,
+              text: _isWorkingWithTempDevice
+                  ? 'Update BOM'
+                  : AppStrings.saveBom,
               onPressed: _handleSaveBom,
               isLoading: _isLoading,
               backgroundColor: Colors.green,
@@ -675,6 +813,8 @@ class _BomUploadScreenState extends ConsumerState<BomUploadScreen>
   }
 
   Widget _buildDeviceBatchCard(Device device) {
+    final TextEditingController quantityController = TextEditingController();
+
     return Card(
       margin: const EdgeInsets.only(bottom: 16),
       child: Padding(
@@ -704,24 +844,31 @@ class _BomUploadScreenState extends ConsumerState<BomUploadScreen>
               children: [
                 Expanded(
                   child: TextFormField(
+                    controller: quantityController,
                     keyboardType: TextInputType.number,
                     decoration: const InputDecoration(
                       labelText: 'Quantity to Produce',
                       suffixText: 'units',
+                      hintText: 'Enter quantity',
                     ),
-                    onChanged: (value) {
-                      int? quantity = int.tryParse(value);
-                      if (quantity != null && quantity > 0) {
-                        setState(() {});
-                      }
-                    },
                   ),
                 ),
                 const SizedBox(width: 16),
                 CustomButton(
                   text: 'Calculate',
-                  onPressed: () =>
-                      _showBatchCalculation(device, 5), // Default 5 units
+                  onPressed: () {
+                    int? quantity = int.tryParse(quantityController.text);
+                    if (quantity != null && quantity > 0) {
+                      _showBatchCalculation(device, quantity);
+                    } else {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(
+                          content: Text('Please enter a valid quantity'),
+                          backgroundColor: Colors.orange,
+                        ),
+                      );
+                    }
+                  },
                   icon: Icons.calculate,
                 ),
               ],
@@ -775,7 +922,7 @@ class _BomUploadScreenState extends ConsumerState<BomUploadScreen>
   }
 
   Future<void> _handleSaveBom() async {
-    if (_selectedPcbId == null || _selectedDeviceId == null) return;
+    if (_selectedPcbId == null) return;
 
     setState(() {
       _isLoading = true;
@@ -792,10 +939,23 @@ class _BomUploadScreenState extends ConsumerState<BomUploadScreen>
         updatedAt: DateTime.now(),
       );
 
-      // Save BOM to device
-      ref
-          .read(deviceProvider.notifier)
-          .updatePcbBOM(_selectedDeviceId!, _selectedPcbId!, bom);
+      if (_isWorkingWithTempDevice) {
+        // Update temp PCB and return to PCB creation
+        if (widget.pcbIndex != null && widget.pcbIndex! < _tempPcbs.length) {
+          final updatedPcb = _tempPcbs[widget.pcbIndex!].copyWith(bom: bom);
+
+          // Return the updated PCB to PCB creation screen
+          Navigator.pop(context, updatedPcb);
+          return;
+        }
+      } else {
+        // Save BOM to existing device
+        if (_selectedDeviceId != null) {
+          ref
+              .read(deviceProvider.notifier)
+              .updatePcbBOM(_selectedDeviceId!, _selectedPcbId!, bom);
+        }
+      }
 
       setState(() {
         _isLoading = false;
@@ -804,11 +964,19 @@ class _BomUploadScreenState extends ConsumerState<BomUploadScreen>
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text(AppStrings.bomSaved),
+          SnackBar(
+            content: Text(
+              _isWorkingWithTempDevice
+                  ? 'BOM updated in device creation!'
+                  : 'BOM saved successfully! PCB status updated.',
+            ),
             backgroundColor: Colors.green,
           ),
         );
+
+        if (!_isWorkingWithTempDevice) {
+          _showBomSavedDialog();
+        }
       }
     } catch (e) {
       setState(() {
@@ -824,6 +992,105 @@ class _BomUploadScreenState extends ConsumerState<BomUploadScreen>
         );
       }
     }
+  }
+
+  Future<bool?> _showUnsavedChangesDialog() {
+    return showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Unsaved Changes'),
+        content: const Text(
+          'You have unsaved changes to your BOM. Do you want to discard them?',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Cancel'),
+          ),
+          CustomButton(
+            text: 'Discard',
+            backgroundColor: Colors.red,
+            onPressed: () => Navigator.of(context).pop(true),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showBomSavedDialog() {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        icon: const Icon(Icons.check_circle, color: Colors.green, size: 48),
+        title: const Text('BOM Uploaded Successfully!'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Text(
+              'BOM has been uploaded for the selected PCB board.',
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 12),
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: Colors.green[50],
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: Colors.green[200]!),
+              ),
+              child: Column(
+                children: [
+                  Row(
+                    children: [
+                      const Icon(
+                        Icons.developer_board,
+                        size: 16,
+                        color: Colors.green,
+                      ),
+                      const SizedBox(width: 8),
+                      Text('PCB: ${widget.pcbName ?? "Selected PCB"}'),
+                    ],
+                  ),
+                  const SizedBox(height: 4),
+                  Row(
+                    children: [
+                      const Icon(
+                        Icons.inventory,
+                        size: 16,
+                        color: Colors.green,
+                      ),
+                      const SizedBox(width: 8),
+                      Text('Components: ${_currentBomItems.length}'),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          CustomOutlinedButton(
+            text: 'Upload Another',
+            onPressed: () {
+              Navigator.of(context).pop();
+              setState(() {
+                _selectedPcbId = null;
+                _selectedDeviceId = null;
+                _currentBomItems.clear();
+                _hasUnsavedChanges = false;
+              });
+            },
+          ),
+          CustomButton(
+            text: 'Done',
+            onPressed: () {
+              Navigator.of(context).pop();
+              Navigator.of(context).pop();
+            },
+          ),
+        ],
+      ),
+    );
   }
 
   void _handleBomItemEdit(int index, BOMItem updatedItem) {
@@ -911,8 +1178,22 @@ class _BomUploadScreenState extends ConsumerState<BomUploadScreen>
               _buildBatchCalculationDialog(device, quantity, feasibility),
         );
       },
-      loading: () {},
-      error: (_, __) {},
+      loading: () {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Loading materials data...'),
+            backgroundColor: Colors.blue,
+          ),
+        );
+      },
+      error: (error, _) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error loading materials: $error'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      },
     );
   }
 
@@ -921,9 +1202,9 @@ class _BomUploadScreenState extends ConsumerState<BomUploadScreen>
     int quantity,
     Map<String, dynamic> feasibility,
   ) {
-    bool canProduce = feasibility['canProduce'];
-    Map<String, int> requirements = feasibility['requirements'];
-    Map<String, int> shortages = feasibility['shortages'];
+    bool canProduce = feasibility['canProduce'] ?? false;
+    Map<String, int> requirements = feasibility['requirements'] ?? {};
+    Map<String, int> shortages = feasibility['shortages'] ?? {};
 
     return AlertDialog(
       title: Text('Batch Calculation: ${device.name}'),
@@ -932,7 +1213,24 @@ class _BomUploadScreenState extends ConsumerState<BomUploadScreen>
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text('Quantity: $quantity units'),
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: Colors.blue[50],
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: Colors.blue[200]!),
+              ),
+              child: Row(
+                children: [
+                  Icon(Icons.info_outline, color: Colors.blue[600]),
+                  const SizedBox(width: 8),
+                  Text(
+                    'Production Quantity: $quantity units',
+                    style: const TextStyle(fontWeight: FontWeight.bold),
+                  ),
+                ],
+              ),
+            ),
             const SizedBox(height: 16),
 
             Row(
@@ -953,47 +1251,100 @@ class _BomUploadScreenState extends ConsumerState<BomUploadScreen>
             ),
             const SizedBox(height: 16),
 
-            const Text(
-              'Material Requirements:',
-              style: TextStyle(fontWeight: FontWeight.bold),
-            ),
-            const SizedBox(height: 8),
-            ...requirements.entries.map((entry) {
-              String material = entry.key;
-              int required = entry.value;
-              int shortage = shortages[material] ?? 0;
+            if (requirements.isNotEmpty) ...[
+              const Text(
+                'Material Requirements:',
+                style: TextStyle(fontWeight: FontWeight.bold),
+              ),
+              const SizedBox(height: 8),
+              Container(
+                constraints: const BoxConstraints(maxHeight: 200),
+                child: SingleChildScrollView(
+                  child: Column(
+                    children: requirements.entries.map((entry) {
+                      String material = entry.key;
+                      int required = entry.value;
+                      int shortage = shortages[material] ?? 0;
 
-              return Padding(
-                padding: const EdgeInsets.only(bottom: 4),
-                child: Row(
-                  children: [
-                    Expanded(child: Text(material)),
-                    Text('$required units'),
-                    if (shortage > 0) ...[
-                      const SizedBox(width: 8),
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 6,
-                          vertical: 2,
-                        ),
+                      return Container(
+                        margin: const EdgeInsets.only(bottom: 4),
+                        padding: const EdgeInsets.all(8),
                         decoration: BoxDecoration(
-                          color: Colors.red[100],
+                          color: shortage > 0
+                              ? Colors.red[50]
+                              : Colors.green[50],
                           borderRadius: BorderRadius.circular(4),
-                        ),
-                        child: Text(
-                          '-$shortage',
-                          style: const TextStyle(
-                            color: Colors.red,
-                            fontSize: 10,
-                            fontWeight: FontWeight.bold,
+                          border: Border.all(
+                            color: shortage > 0
+                                ? Colors.red[200]!
+                                : Colors.green[200]!,
                           ),
                         ),
+                        child: Row(
+                          children: [
+                            Expanded(
+                              child: Text(
+                                material,
+                                style: const TextStyle(fontSize: 12),
+                              ),
+                            ),
+                            Text(
+                              '$required units',
+                              style: const TextStyle(
+                                fontSize: 12,
+                                fontWeight: FontWeight.w500,
+                              ),
+                            ),
+                            if (shortage > 0) ...[
+                              const SizedBox(width: 8),
+                              Container(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 6,
+                                  vertical: 2,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: Colors.red[100],
+                                  borderRadius: BorderRadius.circular(12),
+                                ),
+                                child: Text(
+                                  'Short: $shortage',
+                                  style: const TextStyle(
+                                    color: Colors.red,
+                                    fontSize: 10,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ],
+                        ),
+                      );
+                    }).toList(),
+                  ),
+                ),
+              ),
+            ] else ...[
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Colors.orange[50],
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: Colors.orange[200]!),
+                ),
+                child: Row(
+                  children: [
+                    Icon(Icons.warning_amber, color: Colors.orange[600]),
+                    const SizedBox(width: 8),
+                    const Expanded(
+                      child: Text(
+                        'No material requirements calculated. Please check if BOM data is available.',
+                        style: TextStyle(fontSize: 12),
                       ),
-                    ],
+                    ),
                   ],
                 ),
-              );
-            }).toList(),
+              ),
+            ],
           ],
         ),
       ),
@@ -1008,6 +1359,12 @@ class _BomUploadScreenState extends ConsumerState<BomUploadScreen>
             onPressed: () {
               Navigator.pop(context);
               // Navigate to production screen or handle production
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  content: Text('Production feature will be implemented soon'),
+                  backgroundColor: Colors.blue,
+                ),
+              );
             },
           ),
       ],
@@ -1019,34 +1376,69 @@ class _BomUploadScreenState extends ConsumerState<BomUploadScreen>
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('BOM Upload Help'),
-        content: const SingleChildScrollView(
+        content: SingleChildScrollView(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             mainAxisSize: MainAxisSize.min,
             children: [
-              Text(
+              const Text(
                 'How to upload BOM:',
                 style: TextStyle(fontWeight: FontWeight.bold),
               ),
-              SizedBox(height: 8),
-              Text('1. Select the PCB board from dropdown'),
-              Text('2. Download the Excel template'),
-              Text('3. Fill in your BOM data following the format'),
-              Text('4. Upload the Excel file'),
-              Text('5. Review and edit if needed'),
-              Text('6. Save the BOM'),
-              SizedBox(height: 12),
-              Text(
+              const SizedBox(height: 8),
+              const Text('1. Select the PCB board from dropdown'),
+              const Text('2. Download the Excel template'),
+              const Text('3. Fill in your BOM data following the format'),
+              const Text('4. Upload the Excel file'),
+              const Text('5. Review and edit if needed'),
+              const Text('6. Save the BOM'),
+              const SizedBox(height: 12),
+              const Text(
                 'Important Notes:',
                 style: TextStyle(fontWeight: FontWeight.bold),
               ),
-              SizedBox(height: 4),
-              Text(
+              const SizedBox(height: 4),
+              const Text(
                 '• Value column must match exact material names in inventory',
               ),
-              Text('• Use "top" or "bottom" for layer column'),
-              Text('• All columns are required'),
-              Text('• Quantity must be positive numbers'),
+              const Text('• Use "top" or "bottom" for layer column'),
+              const Text('• All columns are required'),
+              const Text('• Quantity must be positive numbers'),
+              const SizedBox(height: 12),
+              const Text(
+                'Batch Calculator:',
+                style: TextStyle(fontWeight: FontWeight.bold),
+              ),
+              const SizedBox(height: 4),
+              const Text('• Enter production quantity to check feasibility'),
+              const Text('• System calculates material requirements'),
+              const Text('• Shows shortages if materials are insufficient'),
+              const Text('• Only devices with complete BOMs appear here'),
+              if (_isWorkingWithTempDevice) ...[
+                const SizedBox(height: 12),
+                Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: Colors.blue[50],
+                    borderRadius: BorderRadius.circular(6),
+                    border: Border.all(color: Colors.blue[200]!),
+                  ),
+                  child: const Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Device Creation Mode:',
+                        style: TextStyle(fontWeight: FontWeight.bold),
+                      ),
+                      SizedBox(height: 4),
+                      Text('• Changes are saved to your device being created'),
+                      Text('• BOMs persist until you manually remove them'),
+                      Text('• Click "Update BOM" to save changes'),
+                      Text('• Return to PCB creation to continue'),
+                    ],
+                  ),
+                ),
+              ],
             ],
           ),
         ),

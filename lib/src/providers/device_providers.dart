@@ -106,7 +106,14 @@ class DeviceNotifier extends StateNotifier<AsyncValue<List<Device>>> {
       );
 
       _allDevices[deviceIndex] = updatedDevice;
+      _saveToStorage(); // Save updated device
       state = AsyncValue.data(List.from(_allDevices));
+
+      // Debug print
+      print('BOM updated for PCB $pcbId in device $deviceId');
+      print(
+        'Device ${updatedDevice.name} ready for production: ${updatedDevice.isReadyForProduction}',
+      );
     }
   }
 

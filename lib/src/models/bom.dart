@@ -59,16 +59,36 @@ class BOMItem {
     required String id,
     required String pcbId,
   }) {
+    // Handle layer value
+    String layerValue = 'top'; // Default value
+    if (row.length > 5 && row[5] != null) {
+      String rawLayer = row[5].toString().toLowerCase().trim();
+      if (['top', 'bottom'].contains(rawLayer)) {
+        layerValue = rawLayer;
+      }
+    }
+
+    // Handle quantity - default to 1 if 0 or invalid
+    int quantity = 1;
+    if (row.length > 4 && row[4] != null) {
+      quantity = int.tryParse(row[4].toString()) ?? 1;
+      if (quantity <= 0) quantity = 1; // Default to 1 for invalid quantities
+    }
+
+    // Handle serial number
+    int serialNumber = 0;
+    if (row.length > 0 && row[0] != null) {
+      serialNumber = int.tryParse(row[0].toString()) ?? 0;
+    }
+
     return BOMItem(
       id: id,
-      serialNumber: int.tryParse(row[0]?.toString() ?? '0') ?? 0,
-      reference: row.length > 1 ? row[1]?.toString() ?? '' : '',
-      value: row.length > 2 ? row[2]?.toString() ?? '' : '',
-      footprint: row.length > 3 ? row[3]?.toString() ?? '' : '',
-      quantity: row.length > 4
-          ? int.tryParse(row[4]?.toString() ?? '0') ?? 0
-          : 0,
-      layer: row.length > 5 ? row[5]?.toString().toLowerCase() ?? 'top' : 'top',
+      serialNumber: serialNumber,
+      reference: row.length > 1 ? (row[1]?.toString() ?? '').trim() : '',
+      value: row.length > 2 ? (row[2]?.toString() ?? '').trim() : '',
+      footprint: row.length > 3 ? (row[3]?.toString() ?? '').trim() : '',
+      quantity: quantity,
+      layer: layerValue,
       pcbId: pcbId,
       createdAt: DateTime.now(),
     );

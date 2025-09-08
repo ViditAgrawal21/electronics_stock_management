@@ -172,8 +172,20 @@ class ExcelService {
                 id: bomItemId,
                 pcbId: pcbId,
               );
-              if (bomItem.reference.isNotEmpty) {
+
+              // More permissive validation - include rows with reference OR value
+              bool hasReference =
+                  bomItem.reference.isNotEmpty &&
+                  bomItem.reference.trim() != 'Reference';
+              bool hasValue =
+                  bomItem.value.isNotEmpty && bomItem.value.trim() != 'Value';
+              bool hasValidData = hasReference || hasValue;
+
+              // Include rows that have meaningful content
+              if (hasValidData) {
                 bomItems.add(bomItem);
+              } else {
+                print('Skipping empty row $rowIndex');
               }
             } catch (e) {
               print('Error processing BOM row $rowIndex: $e');
