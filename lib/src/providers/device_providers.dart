@@ -27,7 +27,50 @@ class DeviceNotifier extends StateNotifier<AsyncValue<List<Device>>> {
   // Add new device
   void addDevice(Device device) {
     _allDevices.add(device);
+    _saveToStorage(); // Add this method
     state = AsyncValue.data(List.from(_allDevices));
+  }
+
+  // Save to local storage (simplified for demo)
+  void _saveToStorage() {
+    // In a real app, save to SharedPreferences or SQLite
+    print('Saving ${_allDevices.length} devices to storage');
+    for (var device in _allDevices) {
+      print('Device: ${device.name} with ${device.pcbs.length} PCBs');
+    }
+  }
+
+  // Mock data for testing
+  List<Device> _getMockDevices() {
+    return [
+      Device(
+        id: 'device_1',
+        name: 'Air Leak Tester',
+        subComponents: [
+          SubComponent(id: 'sc_1', name: 'Enclosure', quantity: 1),
+          SubComponent(id: 'sc_2', name: 'Display', quantity: 1),
+          SubComponent(id: 'sc_3', name: 'SMPS', quantity: 1),
+        ],
+        pcbs: [
+          PCB(
+            id: 'pcb_1',
+            name: 'Cape Board',
+            deviceId: 'device_1',
+            createdAt: DateTime.now(),
+            updatedAt: DateTime.now(),
+          ),
+          PCB(
+            id: 'pcb_2',
+            name: 'DIDO Board',
+            deviceId: 'device_1',
+            createdAt: DateTime.now(),
+            updatedAt: DateTime.now(),
+          ),
+        ],
+        createdAt: DateTime.now(),
+        updatedAt: DateTime.now(),
+      ),
+    ];
   }
 
   // Update device

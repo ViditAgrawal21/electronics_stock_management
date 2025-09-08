@@ -5,6 +5,7 @@ import '../models/devices.dart';
 import '../providers/device_providers.dart';
 import '../theme/app_theme.dart';
 import '../theme/text_styles.dart';
+import '../widgets/custom_button.dart';
 
 class DeviceHistoryScreen extends ConsumerStatefulWidget {
   const DeviceHistoryScreen({super.key});
@@ -82,39 +83,131 @@ class _DeviceHistoryScreenState extends ConsumerState<DeviceHistoryScreen>
   }
 
   Widget _buildHistoryTab(List<ProductionRecord> history) {
-    if (history.isEmpty) {
-      return Center(
+    final devicesAsync = ref.watch(deviceProvider);
+
+    return devicesAsync.when(
+      data: (devices) {
+        if (devices.isEmpty && history.isEmpty) {
+          return Center(
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(Icons.history, size: 64, color: Colors.grey[400]),
+                const SizedBox(height: 16),
+                Text(
+                  'No devices created yet',
+                  style: Theme.of(
+                    context,
+                  ).textTheme.titleMedium?.copyWith(color: Colors.grey[600]),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  'Create devices in PCB Creation to see them here',
+                  style: Theme.of(
+                    context,
+                  ).textTheme.bodySmall?.copyWith(color: Colors.grey[500]),
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: 16),
+                CustomButton(
+                  text: 'Create Device',
+                  onPressed: () {
+                    Navigator.pop(context);
+                    // Navigate to PCB creation
+                  },
+                  icon: Icons.add,
+                ),
+              ],
+            ),
+          );
+        }
+
+        return Column(
+          children: [
+            // Show created devices
+            if (devices.isNotEmpty) ...[
+              Padding(
+                padding: const EdgeInsets.all(16),
+                child: Text(
+                  'Created Devices (${devices.length})',
+                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ),
+              ...devices.map((device) => _buildDeviceCard(device)).toList(),
+            ],
+
+            // Show production history
+            if (history.isNotEmpty) ...[
+              Padding(
+                padding: const EdgeInsets.all(16),
+                child: Text(
+                  'Production History (${history.length})',
+                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ),
+              ...history
+                  .map((record) => _buildProductionRecordCard(record))
+                  .toList(),
+            ],
+          ],
+        );
+      },
+      loading: () => const Center(child: CircularProgressIndicator()),
+      error: (error, stack) => Center(
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(Icons.history, size: 64, color: Colors.grey[400]),
+            const Icon(Icons.error, size: 64, color: Colors.red),
             const SizedBox(height: 16),
-            Text(
-              'No production history yet',
-              style: Theme.of(
-                context,
-              ).textTheme.titleMedium?.copyWith(color: Colors.grey[600]),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              'Start producing devices to see history here',
-              style: Theme.of(
-                context,
-              ).textTheme.bodySmall?.copyWith(color: Colors.grey[500]),
-              textAlign: TextAlign.center,
+            Text('Error: $error'),
+            const SizedBox(height: 16),
+            CustomButton(
+              text: 'Retry',
+              onPressed: () => ref.invalidate(deviceProvider),
             ),
           ],
         ),
-      );
-    }
+      ),
+    );
+  }
 
-    return ListView.builder(
-      padding: const EdgeInsets.all(16),
-      itemCount: history.length,
-      itemBuilder: (context, index) {
-        final record = history[index];
-        return _buildProductionRecordCard(record);
-      },
+  Widget _buildDeviceCard(Device device) {
+    return Card(
+      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+      child: ListTile(
+        leading: CircleAvatar(
+          backgroundColor: device.isReadyForProduction
+              ? Colors.green
+              : Colors.orange,
+          child: Icon(
+            device.isReadyForProduction ? Icons.check : Icons.pending,
+            color: Colors.white,
+          ),
+        ),
+        title: Text(device.name),
+        subtitle: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              '${device.pcbs.length} PCB boards • ${device.subComponents.length} components',
+            ),
+            Text(
+              'Created: ${_formatDateTime(device.createdAt)}',
+              style: const TextStyle(fontSize: 12),
+            ),
+          ],
+        ),
+        trailing: device.isReadyForProduction
+            ? const Icon(Icons.play_circle, color: Colors.green)
+            : const Icon(Icons.upload_file, color: Colors.orange),
+        onTap: () {
+          // Show device details or navigate to edit
+        },
+      ),
     );
   }
 

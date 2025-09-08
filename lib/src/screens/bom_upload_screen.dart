@@ -180,6 +180,12 @@ class _BomUploadScreenState extends ConsumerState<BomUploadScreen>
   Widget _buildPcbDropdown(List<Device> devices) {
     List<DropdownMenuItem<String>> items = [];
 
+    // Debug: Print available devices
+    print('Available devices: ${devices.length}');
+    for (Device device in devices) {
+      print('Device: ${device.name} with ${device.pcbs.length} PCBs');
+    }
+
     for (Device device in devices) {
       for (PCB pcb in device.pcbs) {
         items.add(
@@ -210,37 +216,50 @@ class _BomUploadScreenState extends ConsumerState<BomUploadScreen>
     }
 
     if (items.isEmpty) {
-      return Container(
-        padding: const EdgeInsets.all(16),
-        decoration: BoxDecoration(
-          color: Colors.orange[50],
-          borderRadius: BorderRadius.circular(8),
-          border: Border.all(color: Colors.orange[200]!),
-        ),
-        child: Row(
-          children: [
-            Icon(Icons.info, color: Colors.orange[600]),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'No PCB boards found',
-                    style: TextStyle(
-                      fontWeight: FontWeight.bold,
-                      color: Colors.orange[700],
-                    ),
-                  ),
-                  const Text(
-                    'Create devices with PCB boards first in PCB Creation',
-                    style: TextStyle(fontSize: 12),
-                  ),
-                ],
-              ),
+      return Column(
+        children: [
+          Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: Colors.orange[50],
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(color: Colors.orange[200]!),
             ),
-          ],
-        ),
+            child: Row(
+              children: [
+                Icon(Icons.info, color: Colors.orange[600]),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'No PCB boards found',
+                        style: TextStyle(
+                          fontWeight: FontWeight.bold,
+                          color: Colors.orange[700],
+                        ),
+                      ),
+                      const Text(
+                        'Create devices with PCB boards first in PCB Creation',
+                        style: TextStyle(fontSize: 12),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 16),
+          CustomButton(
+            text: 'Go to PCB Creation',
+            onPressed: () {
+              Navigator.pop(context);
+              // Navigate to PCB creation
+            },
+            icon: Icons.add_circle,
+          ),
+        ],
       );
     }
 
