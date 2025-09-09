@@ -6,6 +6,7 @@ import '../providers/device_providers.dart';
 import '../theme/app_theme.dart';
 import '../theme/text_styles.dart';
 import '../widgets/custom_button.dart';
+import '../services/pdf_services.dart';
 
 class DeviceHistoryScreen extends ConsumerStatefulWidget {
   const DeviceHistoryScreen({super.key});
@@ -113,7 +114,6 @@ class _DeviceHistoryScreenState extends ConsumerState<DeviceHistoryScreen>
                   text: 'Create Device',
                   onPressed: () {
                     Navigator.pop(context);
-                    // Navigate to PCB creation
                   },
                   icon: Icons.add,
                 ),
@@ -122,38 +122,57 @@ class _DeviceHistoryScreenState extends ConsumerState<DeviceHistoryScreen>
           );
         }
 
-        return Column(
-          children: [
-            // Show created devices
-            if (devices.isNotEmpty) ...[
-              Padding(
-                padding: const EdgeInsets.all(16),
-                child: Text(
-                  'Created Devices (${devices.length})',
-                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                    fontWeight: FontWeight.bold,
+        return SingleChildScrollView(
+          child: Column(
+            children: [
+              // Show created devices with detailed breakdown
+              if (devices.isNotEmpty) ...[
+                Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          'Created Devices (${devices.length})',
+                          style: Theme.of(context).textTheme.titleMedium
+                              ?.copyWith(fontWeight: FontWeight.bold),
+                        ),
+                      ),
+                      IconButton(
+                        icon: const Icon(Icons.picture_as_pdf),
+                        onPressed: () => _generateAllDevicesPDF(devices),
+                        tooltip: 'Export All Devices to PDF',
+                      ),
+                      IconButton(
+                        icon: const Icon(Icons.analytics),
+                        onPressed: () => _generateProductionReportPDF(devices),
+                        tooltip: 'Generate Production Report',
+                      ),
+                    ],
                   ),
                 ),
-              ),
-              ...devices.map((device) => _buildDeviceCard(device)).toList(),
-            ],
+                ...devices
+                    .map((device) => _buildEnhancedDeviceCard(device))
+                    .toList(),
+              ],
 
-            // Show production history
-            if (history.isNotEmpty) ...[
-              Padding(
-                padding: const EdgeInsets.all(16),
-                child: Text(
-                  'Production History (${history.length})',
-                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                    fontWeight: FontWeight.bold,
+              // Show production history
+              if (history.isNotEmpty) ...[
+                Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: Text(
+                    'Production History (${history.length})',
+                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                      fontWeight: FontWeight.bold,
+                    ),
                   ),
                 ),
-              ),
-              ...history
-                  .map((record) => _buildProductionRecordCard(record))
-                  .toList(),
+                ...history
+                    .map((record) => _buildProductionRecordCard(record))
+                    .toList(),
+              ],
             ],
-          ],
+          ),
         );
       },
       loading: () => const Center(child: CircularProgressIndicator()),
@@ -175,40 +194,538 @@ class _DeviceHistoryScreenState extends ConsumerState<DeviceHistoryScreen>
     );
   }
 
-  Widget _buildDeviceCard(Device device) {
+  Widget _buildEnhancedDeviceCard(Device device) {
     return Card(
-      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-      child: ListTile(
-        leading: CircleAvatar(
-          backgroundColor: device.isReadyForProduction
-              ? Colors.green
-              : Colors.orange,
-          child: Icon(
-            device.isReadyForProduction ? Icons.check : Icons.pending,
-            color: Colors.white,
+      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      elevation: 3,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      child: Column(
+        children: [
+          // Header Section
+          Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: device.isReadyForProduction
+                  ? Colors.green[50]
+                  : Colors.orange[50],
+              borderRadius: const BorderRadius.only(
+                topLeft: Radius.circular(12),
+                topRight: Radius.circular(12),
+              ),
+            ),
+            child: Row(
+              children: [
+                CircleAvatar(
+                  backgroundColor: device.isReadyForProduction
+                      ? Colors.green
+                      : Colors.orange,
+                  child: Icon(
+                    device.isReadyForProduction ? Icons.check : Icons.pending,
+                    color: Colors.white,
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        device.name,
+                        style: const TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      if (device.description != null) ...[
+                        const SizedBox(height: 4),
+                        Text(
+                          device.description!,
+                          style: TextStyle(
+                            fontSize: 14,
+                            color: Colors.grey[600],
+                          ),
+                        ),
+                      ],
+                      const SizedBox(height: 4),
+                      Text(
+                        'Created: ${_formatDateTime(device.createdAt)}',
+                        style: const TextStyle(fontSize: 12),
+                      ),
+                    ],
+                  ),
+                ),
+                Column(
+                  children: [
+                    IconButton(
+                      icon: const Icon(Icons.picture_as_pdf),
+                      onPressed: () => _generateSingleDevicePDF(device),
+                      tooltip: 'Export to PDF',
+                    ),
+                    Text(
+                      device.isReadyForProduction ? 'Ready' : 'Pending',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: device.isReadyForProduction
+                            ? Colors.green
+                            : Colors.orange,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
           ),
-        ),
-        title: Text(device.name),
-        subtitle: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              '${device.pcbs.length} PCB boards • ${device.subComponents.length} components',
+
+          // Quick Stats
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+            child: Row(
+              children: [
+                Expanded(
+                  child: _buildQuickStat(
+                    'Components',
+                    device.subComponents.length.toString(),
+                    Icons.category,
+                    Colors.blue,
+                  ),
+                ),
+                Expanded(
+                  child: _buildQuickStat(
+                    'PCB Boards',
+                    device.pcbs.length.toString(),
+                    Icons.developer_board,
+                    Colors.purple,
+                  ),
+                ),
+                Expanded(
+                  child: _buildQuickStat(
+                    'Total BOM Items',
+                    device.totalBomItems.toString(),
+                    Icons.list_alt,
+                    Colors.green,
+                  ),
+                ),
+              ],
             ),
-            Text(
-              'Created: ${_formatDateTime(device.createdAt)}',
-              style: const TextStyle(fontSize: 12),
-            ),
-          ],
-        ),
-        trailing: device.isReadyForProduction
-            ? const Icon(Icons.play_circle, color: Colors.green)
-            : const Icon(Icons.upload_file, color: Colors.orange),
-        onTap: () {
-          // Show device details or navigate to edit
-        },
+          ),
+
+          // Detailed Breakdown Sections
+          _buildComponentsSection(device),
+          _buildPcbSection(device),
+        ],
       ),
     );
+  }
+
+  Widget _buildQuickStat(
+    String label,
+    String value,
+    IconData icon,
+    Color color,
+  ) {
+    return Container(
+      padding: const EdgeInsets.all(8),
+      margin: const EdgeInsets.symmetric(horizontal: 4),
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.1),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: color.withOpacity(0.3)),
+      ),
+      child: Column(
+        children: [
+          Icon(icon, color: color, size: 20),
+          const SizedBox(height: 4),
+          Text(
+            value,
+            style: TextStyle(
+              fontSize: 16,
+              fontWeight: FontWeight.bold,
+              color: color,
+            ),
+          ),
+          Text(
+            label,
+            style: TextStyle(fontSize: 10, color: color),
+            textAlign: TextAlign.center,
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildComponentsSection(Device device) {
+    return ExpansionTile(
+      title: Row(
+        children: [
+          Icon(Icons.category, color: Colors.blue[600]),
+          const SizedBox(width: 8),
+          Text(
+            'Components (${device.subComponents.length})',
+            style: const TextStyle(fontWeight: FontWeight.w600),
+          ),
+        ],
+      ),
+      children: [
+        Container(
+          width: double.infinity,
+          margin: const EdgeInsets.symmetric(horizontal: 16),
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            color: Colors.blue[50],
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(color: Colors.blue[200]!),
+          ),
+          child: Column(
+            children: device.subComponents.map((component) {
+              return Container(
+                margin: const EdgeInsets.only(bottom: 8),
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(6),
+                  border: Border.all(color: Colors.blue[100]!),
+                ),
+                child: Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(6),
+                      decoration: BoxDecoration(
+                        color: Colors.blue[100],
+                        borderRadius: BorderRadius.circular(4),
+                      ),
+                      child: Icon(
+                        Icons.inventory_2,
+                        size: 16,
+                        color: Colors.blue[600],
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            component.name,
+                            style: const TextStyle(
+                              fontWeight: FontWeight.w600,
+                              fontSize: 14,
+                            ),
+                          ),
+                          if (component.description != null) ...[
+                            const SizedBox(height: 2),
+                            Text(
+                              component.description!,
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: Colors.grey[600],
+                              ),
+                            ),
+                          ],
+                        ],
+                      ),
+                    ),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 8,
+                        vertical: 4,
+                      ),
+                      decoration: BoxDecoration(
+                        color: Colors.blue[600],
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Text(
+                        '${component.quantity}x',
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontWeight: FontWeight.w600,
+                          fontSize: 12,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              );
+            }).toList(),
+          ),
+        ),
+        const SizedBox(height: 16),
+      ],
+    );
+  }
+
+  Widget _buildPcbSection(Device device) {
+    return ExpansionTile(
+      title: Row(
+        children: [
+          Icon(Icons.developer_board, color: Colors.purple[600]),
+          const SizedBox(width: 8),
+          Text(
+            'PCB Boards (${device.pcbs.length})',
+            style: const TextStyle(fontWeight: FontWeight.w600),
+          ),
+        ],
+      ),
+      children: [
+        Container(
+          width: double.infinity,
+          margin: const EdgeInsets.symmetric(horizontal: 16),
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            color: Colors.purple[50],
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(color: Colors.purple[200]!),
+          ),
+          child: Column(
+            children: device.pcbs.map((pcb) {
+              return Container(
+                margin: const EdgeInsets.only(bottom: 12),
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: Colors.purple[100]!),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // PCB Header
+                    Row(
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.all(6),
+                          decoration: BoxDecoration(
+                            color: pcb.hasBOM
+                                ? Colors.green[100]
+                                : Colors.orange[100],
+                            borderRadius: BorderRadius.circular(4),
+                          ),
+                          child: Icon(
+                            pcb.hasBOM ? Icons.check_circle : Icons.pending,
+                            size: 16,
+                            color: pcb.hasBOM
+                                ? Colors.green[600]
+                                : Colors.orange[600],
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                pcb.name,
+                                style: const TextStyle(
+                                  fontWeight: FontWeight.w600,
+                                  fontSize: 16,
+                                ),
+                              ),
+                              if (pcb.description != null) ...[
+                                const SizedBox(height: 2),
+                                Text(
+                                  pcb.description!,
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    color: Colors.grey[600],
+                                  ),
+                                ),
+                              ],
+                            ],
+                          ),
+                        ),
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 8,
+                            vertical: 4,
+                          ),
+                          decoration: BoxDecoration(
+                            color: pcb.hasBOM
+                                ? Colors.green[600]
+                                : Colors.orange[600],
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: Text(
+                            pcb.hasBOM
+                                ? '${pcb.uniqueComponents} components'
+                                : 'No BOM',
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontWeight: FontWeight.w600,
+                              fontSize: 11,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+
+                    // BOM Details
+                    if (pcb.hasBOM && pcb.bom != null) ...[
+                      const SizedBox(height: 12),
+                      Container(
+                        padding: const EdgeInsets.all(8),
+                        decoration: BoxDecoration(
+                          color: Colors.grey[50],
+                          borderRadius: BorderRadius.circular(6),
+                          border: Border.all(color: Colors.grey[200]!),
+                        ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
+                              children: [
+                                Icon(
+                                  Icons.list_alt,
+                                  size: 14,
+                                  color: Colors.grey[600],
+                                ),
+                                const SizedBox(width: 4),
+                                Text(
+                                  'BOM Components:',
+                                  style: TextStyle(
+                                    fontWeight: FontWeight.w600,
+                                    fontSize: 12,
+                                    color: Colors.grey[700],
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 8),
+                            ...pcb.bom!.items.take(5).map((bomItem) {
+                              return Padding(
+                                padding: const EdgeInsets.only(bottom: 4),
+                                child: Row(
+                                  children: [
+                                    Container(
+                                      width: 4,
+                                      height: 4,
+                                      decoration: BoxDecoration(
+                                        color: Colors.purple[400],
+                                        shape: BoxShape.circle,
+                                      ),
+                                    ),
+                                    const SizedBox(width: 8),
+                                    Expanded(
+                                      child: Text(
+                                        '${bomItem.reference}: ${bomItem.value}',
+                                        style: const TextStyle(fontSize: 11),
+                                      ),
+                                    ),
+                                    Text(
+                                      '${bomItem.quantity}x',
+                                      style: TextStyle(
+                                        fontSize: 10,
+                                        fontWeight: FontWeight.w600,
+                                        color: Colors.grey[600],
+                                      ),
+                                    ),
+                                    const SizedBox(width: 8),
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(
+                                        horizontal: 4,
+                                        vertical: 2,
+                                      ),
+                                      decoration: BoxDecoration(
+                                        color: Colors.grey[300],
+                                        borderRadius: BorderRadius.circular(3),
+                                      ),
+                                      child: Text(
+                                        bomItem.footprint,
+                                        style: const TextStyle(
+                                          fontSize: 9,
+                                          fontWeight: FontWeight.w500,
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              );
+                            }).toList(),
+                            if (pcb.bom!.items.length > 5) ...[
+                              const SizedBox(height: 4),
+                              Text(
+                                '... and ${pcb.bom!.items.length - 5} more components',
+                                style: TextStyle(
+                                  fontSize: 10,
+                                  fontStyle: FontStyle.italic,
+                                  color: Colors.grey[500],
+                                ),
+                              ),
+                            ],
+                          ],
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              );
+            }).toList(),
+          ),
+        ),
+        const SizedBox(height: 16),
+      ],
+    );
+  }
+
+  // PDF Generation Methods
+  Future<void> _generateSingleDevicePDF(Device device) async {
+    bool success = await PDFService.generateSingleDevicePDF(device);
+
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            success
+                ? 'PDF generated successfully for ${device.name}'
+                : 'Failed to generate PDF for ${device.name}',
+          ),
+          backgroundColor: success ? Colors.green : Colors.red,
+        ),
+      );
+    }
+  }
+
+  Future<void> _generateAllDevicesPDF(List<Device> devices) async {
+    bool success = await PDFService.generateMultipleDevicesPDF(devices);
+
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            success
+                ? 'PDF generated successfully for all ${devices.length} devices'
+                : 'Failed to generate PDF for devices',
+          ),
+          backgroundColor: success ? Colors.green : Colors.red,
+        ),
+      );
+    }
+  }
+
+  Future<void> _generateProductionReportPDF(List<Device> devices) async {
+    final stats = {
+      'totalDevices': devices.length,
+      'readyDevices': devices.where((d) => d.isReadyForProduction).length,
+      'totalComponents': devices.fold<int>(
+        0,
+        (sum, d) => sum + d.subComponents.length,
+      ),
+      'totalPcbs': devices.fold<int>(0, (sum, d) => sum + d.pcbs.length),
+    };
+
+    bool success = await PDFService.generateProductionReportPDF(devices, stats);
+
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            success
+                ? 'Production report generated successfully'
+                : 'Failed to generate production report',
+          ),
+          backgroundColor: success ? Colors.green : Colors.red,
+        ),
+      );
+    }
   }
 
   Widget _buildProductionRecordCard(ProductionRecord record) {
@@ -283,7 +800,7 @@ class _DeviceHistoryScreenState extends ConsumerState<DeviceHistoryScreen>
                 Expanded(
                   child: _buildSummaryItem(
                     'Cost',
-                    '\$${record.totalCost.toStringAsFixed(2)}',
+                    '\${record.totalCost.toStringAsFixed(2)}',
                     Icons.attach_money,
                     Colors.orange,
                   ),

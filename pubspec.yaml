@@ -40,6 +40,8 @@ dependencies:
   shared_preferences: ^2.5.3
   provider: ^6.1.5+1
   flutter_riverpod: ^2.6.1
+  pdf: ^3.11.3
+  printing: ^5.14.2
   # flutter_local_notifications: ^19.4.1
 
 dev_dependencies:

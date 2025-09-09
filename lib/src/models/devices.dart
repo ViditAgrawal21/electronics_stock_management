@@ -82,6 +82,17 @@ class Device {
     this.description,
   });
 
+  // Get total BOM items count across all PCBs
+  int get totalBomItems {
+    int total = 0;
+    for (final pcb in pcbs) {
+      if (pcb.bom != null) {
+        total += pcb.bom!.items.length;
+      }
+    }
+    return total;
+  }
+
   // Get total PCBs count
   int get totalPcbs => pcbs.length;
 

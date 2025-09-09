@@ -1,16 +1,18 @@
+// Material model with preserved raw material name handling
+
 class Material {
   final String id;
-  final String name;
+  final String name; // This should be the raw material name exactly as in Excel
   final int initialQuantity;
-  int remainingQuantity;
-  int usedQuantity;
-  final DateTime createdAt;
-  DateTime lastUsedAt;
+  final int remainingQuantity;
+  final int usedQuantity;
   final String? description;
   final String? category;
   final double? unitCost;
   final String? supplier;
   final String? location;
+  final DateTime createdAt;
+  final DateTime lastUsedAt;
 
   Material({
     required this.id,
@@ -18,28 +20,62 @@ class Material {
     required this.initialQuantity,
     required this.remainingQuantity,
     this.usedQuantity = 0,
-    required this.createdAt,
-    required this.lastUsedAt,
     this.description,
     this.category,
     this.unitCost,
     this.supplier,
     this.location,
+    required this.createdAt,
+    required this.lastUsedAt,
   });
 
-  // Calculate used quantity automatically
-  int get calculatedUsedQuantity => initialQuantity - remainingQuantity;
+  // CRITICAL: This method should preserve the raw material name exactly
+  static Material fromExcelRow(List<dynamic> rowValues, {required String id}) {
+    // Ensure we have minimum required columns
+    if (rowValues.length < 3) {
+      throw Exception('Insufficient columns in Excel row');
+    }
 
-  // Check if material is low stock
-  bool get isLowStock => remainingQuantity <= 10 && remainingQuantity > 5;
+    // Extract raw material name exactly as it appears - NO MODIFICATION
+    String rawMaterialName = (rowValues[0]?.toString() ?? '').trim();
 
-  // Check if material is critical stock
-  bool get isCriticalStock => remainingQuantity <= 5 && remainingQuantity > 0;
+    // Don't modify the name - preserve it exactly as in Excel
+    // Avoid any transformations like:
+    // - toLowerCase()
+    // - toUpperCase()
+    // - replaceAll()
+    // - trim() beyond basic whitespace
+    // - Any regex replacements
 
-  // Check if material is out of stock
-  bool get isOutOfStock => remainingQuantity <= 0;
+    if (rawMaterialName.isEmpty) {
+      throw Exception('Raw material name cannot be empty');
+    }
 
-  // Get stock status
+    // Parse other fields safely
+    int initialQty = _parseInteger(rowValues[1]);
+    int remainingQty = _parseInteger(rowValues[2]);
+    int usedQty = rowValues.length > 3
+        ? _parseInteger(rowValues[3])
+        : (initialQty - remainingQty);
+
+    return Material(
+      id: id,
+      name: rawMaterialName, // Use exactly as provided from Excel
+      initialQuantity: initialQty,
+      remainingQuantity: remainingQty,
+      usedQuantity: usedQty,
+      description: rowValues.length > 4
+          ? rowValues[4]?.toString()?.trim()
+          : null,
+      category: rowValues.length > 5 ? rowValues[5]?.toString()?.trim() : null,
+      unitCost: rowValues.length > 6 ? _parseDouble(rowValues[6]) : null,
+      supplier: rowValues.length > 7 ? rowValues[7]?.toString()?.trim() : null,
+      location: rowValues.length > 8 ? rowValues[8]?.toString()?.trim() : null,
+      createdAt: DateTime.now(),
+      lastUsedAt: DateTime.now(),
+    );
+  }
+
   String get stockStatus {
     if (isOutOfStock) return 'Out of Stock';
     if (isCriticalStock) return 'Critical Stock';
@@ -47,130 +83,112 @@ class Material {
     return 'In Stock';
   }
 
-  // Create from JSON
-  factory Material.fromJson(Map<String, dynamic> json) {
-    return Material(
-      id: json['id'] ?? '',
-      name: json['name'] ?? '',
-      initialQuantity: json['initialQuantity'] ?? 0,
-      remainingQuantity: json['remainingQuantity'] ?? 0,
-      usedQuantity: json['usedQuantity'] ?? 0,
-      createdAt: DateTime.parse(
-        json['createdAt'] ?? DateTime.now().toIso8601String(),
-      ),
-      lastUsedAt: DateTime.parse(
-        json['lastUsedAt'] ?? DateTime.now().toIso8601String(),
-      ),
-      description: json['description'],
-      category: json['category'],
-      unitCost: json['unitCost']?.toDouble(),
-      supplier: json['supplier'],
-      location: json['location'],
-    );
-  }
+  // Alternative constructor with explicit raw material name parameter
+  static Material fromExcelRowWithRawName(
+    List<dynamic> rowValues, {
+    required String rawMaterialName,
+    required String id,
+  }) {
+    if (rawMaterialName.trim().isEmpty) {
+      throw Exception('Raw material name cannot be empty');
+    }
 
-  // Convert to JSON
-  Map<String, dynamic> toJson() {
-    return {
-      'id': id,
-      'name': name,
-      'initialQuantity': initialQuantity,
-      'remainingQuantity': remainingQuantity,
-      'usedQuantity': usedQuantity,
-      'createdAt': createdAt.toIso8601String(),
-      'lastUsedAt': lastUsedAt.toIso8601String(),
-      'description': description,
-      'category': category,
-      'unitCost': unitCost,
-      'supplier': supplier,
-      'location': location,
-    };
-  }
+    int initialQty = _parseInteger(rowValues.length > 1 ? rowValues[1] : 0);
+    int remainingQty = _parseInteger(rowValues.length > 2 ? rowValues[2] : 0);
 
-  // Create from Excel row
-  factory Material.fromExcelRow(List<dynamic> row, {required String id}) {
-    final now = DateTime.now();
     return Material(
       id: id,
-      name: row.isNotEmpty ? row[0]?.toString() ?? '' : '',
-      initialQuantity: row.length > 1
-          ? int.tryParse(row[1]?.toString() ?? '0') ?? 0
-          : 0,
-      remainingQuantity: row.length > 2
-          ? int.tryParse(row[2]?.toString() ?? '0') ?? 0
-          : 0,
-      usedQuantity: row.length > 3
-          ? int.tryParse(row[3]?.toString() ?? '0') ?? 0
-          : 0,
-      createdAt: now,
-      lastUsedAt: now,
-      description: row.length > 4 ? row[4]?.toString() : null,
-      category: row.length > 5 ? row[5]?.toString() : null,
-      unitCost: row.length > 6
-          ? double.tryParse(row[6]?.toString() ?? '0')
+      name: rawMaterialName, // Use the explicitly passed raw material name
+      initialQuantity: initialQty,
+      remainingQuantity: remainingQty,
+      usedQuantity: initialQty - remainingQty,
+      description: rowValues.length > 4
+          ? rowValues[4]?.toString()?.trim()
           : null,
-      supplier: row.length > 7 ? row[7]?.toString() : null,
-      location: row.length > 8 ? row[8]?.toString() : null,
+      category: rowValues.length > 5 ? rowValues[5]?.toString()?.trim() : null,
+      unitCost: rowValues.length > 6 ? _parseDouble(rowValues[6]) : null,
+      supplier: rowValues.length > 7 ? rowValues[7]?.toString()?.trim() : null,
+      location: rowValues.length > 8 ? rowValues[8]?.toString()?.trim() : null,
+      createdAt: DateTime.now(),
+      lastUsedAt: DateTime.now(),
     );
   }
 
-  // Convert to Excel row
+  // Safe integer parsing
+  static int _parseInteger(dynamic value) {
+    if (value == null) return 0;
+    if (value is int) return value;
+    if (value is double) return value.round();
+    if (value is String) {
+      return int.tryParse(value.trim()) ??
+          double.tryParse(value.trim())?.round() ??
+          0;
+    }
+    return 0;
+  }
+
+  // Safe double parsing
+  static double? _parseDouble(dynamic value) {
+    if (value == null) return null;
+    if (value is double) return value;
+    if (value is int) return value.toDouble();
+    if (value is String) {
+      return double.tryParse(value.trim());
+    }
+    return null;
+  }
+
+  // Convert to Excel row format
   List<dynamic> toExcelRow() {
     return [
-      name,
+      name, // Preserve the exact raw material name
       initialQuantity,
       remainingQuantity,
       usedQuantity,
       description ?? '',
       category ?? '',
-      unitCost ?? 0,
+      unitCost ?? 0.0,
       supplier ?? '',
       location ?? '',
     ];
   }
 
-  // Copy with method for updating
+  // Copy with method
   Material copyWith({
     String? id,
     String? name,
     int? initialQuantity,
     int? remainingQuantity,
     int? usedQuantity,
-    DateTime? createdAt,
-    DateTime? lastUsedAt,
     String? description,
     String? category,
     double? unitCost,
     String? supplier,
     String? location,
+    DateTime? createdAt,
+    DateTime? lastUsedAt,
   }) {
     return Material(
       id: id ?? this.id,
-      name: name ?? this.name,
+      name:
+          name ?? this.name, // Preserve original name if not explicitly changed
       initialQuantity: initialQuantity ?? this.initialQuantity,
       remainingQuantity: remainingQuantity ?? this.remainingQuantity,
       usedQuantity: usedQuantity ?? this.usedQuantity,
-      createdAt: createdAt ?? this.createdAt,
-      lastUsedAt: lastUsedAt ?? this.lastUsedAt,
       description: description ?? this.description,
       category: category ?? this.category,
       unitCost: unitCost ?? this.unitCost,
       supplier: supplier ?? this.supplier,
       location: location ?? this.location,
+      createdAt: createdAt ?? this.createdAt,
+      lastUsedAt: lastUsedAt ?? this.lastUsedAt,
     );
   }
 
-  @override
-  String toString() {
-    return 'Material(id: $id, name: $name, remaining: $remainingQuantity, used: $usedQuantity)';
-  }
+  // Stock status getters
+  bool get isLowStock => remainingQuantity <= 10 && remainingQuantity > 5;
+  bool get isCriticalStock => remainingQuantity <= 5 && remainingQuantity > 0;
+  bool get isOutOfStock => remainingQuantity <= 0;
 
-  @override
-  bool operator ==(Object other) {
-    if (identical(this, other)) return true;
-    return other is Material && other.id == id;
-  }
-
-  @override
-  int get hashCode => id.hashCode;
+  int get calculatedUsedQuantity => initialQuantity - remainingQuantity;
 }

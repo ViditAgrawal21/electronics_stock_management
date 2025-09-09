@@ -5,9 +5,10 @@ import 'package:path_provider/path_provider.dart';
 import '../models/materials.dart';
 import '../models/bom.dart';
 import '../constants/app_config.dart';
+import '../utils/excel_utils.dart'; // ADD THIS IMPORT
 
 class ExcelService {
-  // Import materials from Excel file
+  // Import materials from Excel file - CORRECTED VERSION
   static Future<List<Material>> importMaterials() async {
     try {
       FilePickerResult? result = await FilePicker.platform.pickFiles(
@@ -27,13 +28,35 @@ class ExcelService {
           Sheet? sheet = excel.tables[tableName];
           if (sheet == null) continue;
 
+          print('Processing sheet: $tableName');
+
           // Skip header row (assuming first row is header)
           for (int rowIndex = 1; rowIndex < sheet.maxRows; rowIndex++) {
             List<Data?> row = sheet.row(rowIndex);
             if (_isEmptyRow(row)) continue;
 
-            // Convert Data objects to dynamic values
-            List<dynamic> rowValues = row.map((cell) => cell?.value).toList();
+            // PRESERVE RAW MATERIAL NAME EXACTLY AS IN EXCEL
+            String rawMaterialName = _getRawMaterialName(
+              row,
+              0,
+            ); // First column
+
+            if (rawMaterialName.trim().isEmpty) {
+              print('Skipping row $rowIndex: Empty raw material name');
+              continue;
+            }
+
+            // Convert row to values but preserve the raw material name
+            List<dynamic> rowValues = [];
+            for (int cellIndex = 0; cellIndex < row.length; cellIndex++) {
+              if (cellIndex == 0) {
+                // Use preserved raw material name for first column
+                rowValues.add(rawMaterialName);
+              } else {
+                // Use normal conversion for other columns
+                rowValues.add(ExcelUtils.convertCellValue(row[cellIndex]));
+              }
+            }
 
             // Generate unique ID for material
             String materialId =
@@ -44,16 +67,21 @@ class ExcelService {
                 rowValues,
                 id: materialId,
               );
+
               if (material.name.isNotEmpty) {
                 materials.add(material);
+                print('Successfully imported: "${material.name}"');
               }
             } catch (e) {
               print('Error processing row $rowIndex: $e');
+              print('Raw material name: "$rawMaterialName"');
+              print('Row values: $rowValues');
               continue;
             }
           }
         }
 
+        print('Total materials imported: ${materials.length}');
         return materials;
       }
     } catch (e) {
@@ -160,7 +188,9 @@ class ExcelService {
             if (_isEmptyRow(row)) continue;
 
             // Convert Data objects to dynamic values
-            List<dynamic> rowValues = row.map((cell) => cell?.value).toList();
+            List<dynamic> rowValues = row
+                .map((cell) => ExcelUtils.convertCellValue(cell))
+                .toList();
 
             // Generate unique ID for BOM item
             String bomItemId =
@@ -339,6 +369,58 @@ class ExcelService {
       print('Error creating BOM template: $e');
       return false;
     }
+  }
+
+  // CORRECTED: Helper method to get raw material name - returns String
+  static String _getRawMaterialName(List<Data?> row, int columnIndex) {
+    if (columnIndex >= row.length) return '';
+
+    Data? cell = row[columnIndex];
+    if (cell?.value == null) return '';
+
+    // Preserve exact text formatting for raw material name
+    if (cell!.value is TextCellValue) {
+      // TextCellValue.value returns TextSpan, extract the text content
+      var textCellValue = cell.value as TextCellValue;
+      var textSpan = textCellValue.value;
+
+      // Extract text from TextSpan - try multiple approaches
+      if (textSpan.text != null) {
+        return textSpan.text!;
+      } else {
+        // If text is null, build text from children
+        return _extractTextFromTextSpan(textSpan);
+      }
+    } else if (cell.value is IntCellValue) {
+      return (cell.value as IntCellValue).value.toString();
+    } else if (cell.value is DoubleCellValue) {
+      return (cell.value as DoubleCellValue).value.toString();
+    } else {
+      return cell.value.toString();
+    }
+  }
+
+  // Helper method to extract text from TextSpan recursively
+  static String _extractTextFromTextSpan(TextSpan textSpan) {
+    StringBuffer buffer = StringBuffer();
+
+    // Add the main text if available
+    if (textSpan.text != null) {
+      buffer.write(textSpan.text);
+    }
+
+    // Add text from children if available
+    if (textSpan.children != null) {
+      for (var child in textSpan.children!) {
+        if (child is TextSpan) {
+          buffer.write(_extractTextFromTextSpan(child));
+        } else {
+          buffer.write(child.toString());
+        }
+      }
+    }
+
+    return buffer.toString();
   }
 
   // Helper method to check if row is empty
