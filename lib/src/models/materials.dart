@@ -31,32 +31,41 @@ class Material {
 
   // CRITICAL: This method should preserve the raw material name exactly
   static Material fromExcelRow(List<dynamic> rowValues, {required String id}) {
-    // Ensure we have minimum required columns
-    if (rowValues.length < 3) {
-      throw Exception('Insufficient columns in Excel row');
+    // Handle both 2-column and 3+ column Excel formats
+    if (rowValues.isEmpty) {
+      throw Exception('Empty row in Excel');
     }
 
     // Extract raw material name exactly as it appears - NO MODIFICATION
-    String rawMaterialName = (rowValues[0]?.toString() ?? '').trim();
-
-    // Don't modify the name - preserve it exactly as in Excel
-    // Avoid any transformations like:
-    // - toLowerCase()
-    // - toUpperCase()
-    // - replaceAll()
-    // - trim() beyond basic whitespace
-    // - Any regex replacements
+    String rawMaterialName = (rowValues[0]?.toString() ?? '');
 
     if (rawMaterialName.isEmpty) {
       throw Exception('Raw material name cannot be empty');
     }
 
-    // Parse other fields safely
-    int initialQty = _parseInteger(rowValues[1]);
-    int remainingQty = _parseInteger(rowValues[2]);
-    int usedQty = rowValues.length > 3
-        ? _parseInteger(rowValues[3])
-        : (initialQty - remainingQty);
+    // Parse quantity fields based on available columns
+    int initialQty;
+    int remainingQty;
+    int usedQty;
+
+    if (rowValues.length >= 3) {
+      // Standard format: Name, Initial Qty, Remaining Qty, [Used Qty]
+      initialQty = _parseInteger(rowValues[1]);
+      remainingQty = _parseInteger(rowValues[2]);
+      usedQty = rowValues.length > 3
+          ? _parseInteger(rowValues[3])
+          : (initialQty - remainingQty);
+    } else if (rowValues.length == 2) {
+      // Simple format: Name, Quantity (assume quantity is both initial and remaining)
+      int quantity = _parseInteger(rowValues[1]);
+      initialQty = quantity;
+      remainingQty = quantity;
+      usedQty = 0;
+    } else {
+      throw Exception(
+        'Insufficient columns in Excel row - need at least Name and Quantity',
+      );
+    }
 
     return Material(
       id: id,
@@ -89,12 +98,25 @@ class Material {
     required String rawMaterialName,
     required String id,
   }) {
-    if (rawMaterialName.trim().isEmpty) {
+    if (rawMaterialName.isEmpty) {
       throw Exception('Raw material name cannot be empty');
     }
 
-    int initialQty = _parseInteger(rowValues.length > 1 ? rowValues[1] : 0);
-    int remainingQty = _parseInteger(rowValues.length > 2 ? rowValues[2] : 0);
+    // Parse quantity fields based on available columns
+    int initialQty;
+    int remainingQty;
+
+    if (rowValues.length >= 2) {
+      // Has quantity columns
+      initialQty = _parseInteger(rowValues[1]);
+      remainingQty = rowValues.length > 2
+          ? _parseInteger(rowValues[2])
+          : initialQty;
+    } else {
+      // No quantity columns, assume 0
+      initialQty = 0;
+      remainingQty = 0;
+    }
 
     return Material(
       id: id,
@@ -102,13 +124,13 @@ class Material {
       initialQuantity: initialQty,
       remainingQuantity: remainingQty,
       usedQuantity: initialQty - remainingQty,
-      description: rowValues.length > 4
-          ? rowValues[4]?.toString()?.trim()
+      description: rowValues.length > 3
+          ? rowValues[3]?.toString()?.trim()
           : null,
-      category: rowValues.length > 5 ? rowValues[5]?.toString()?.trim() : null,
-      unitCost: rowValues.length > 6 ? _parseDouble(rowValues[6]) : null,
-      supplier: rowValues.length > 7 ? rowValues[7]?.toString()?.trim() : null,
-      location: rowValues.length > 8 ? rowValues[8]?.toString()?.trim() : null,
+      category: rowValues.length > 4 ? rowValues[4]?.toString()?.trim() : null,
+      unitCost: rowValues.length > 5 ? _parseDouble(rowValues[5]) : null,
+      supplier: rowValues.length > 6 ? rowValues[6]?.toString()?.trim() : null,
+      location: rowValues.length > 7 ? rowValues[7]?.toString()?.trim() : null,
       createdAt: DateTime.now(),
       lastUsedAt: DateTime.now(),
     );

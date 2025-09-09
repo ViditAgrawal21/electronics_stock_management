@@ -533,6 +533,13 @@ class _MaterialsListScreenState extends ConsumerState<MaterialsListScreen> {
       await ref.read(materialsProvider.notifier).importMaterials();
 
       if (mounted) {
+        // Clear search and reset filter after successful import
+        _searchController.clear();
+        setState(() {
+          _currentFilter = 'All Materials';
+          _currentSort = 'Name (A-Z)';
+        });
+
         NotificationUtils.showSuccess(
           context,
           'Materials imported successfully',

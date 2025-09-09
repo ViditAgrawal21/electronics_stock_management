@@ -48,7 +48,7 @@ class PDFService {
   }
 
   // Multiple devices PDF - Summary report for all finished goods
-  static Future generateMultipleDevicesPDF(List devices) async {
+  static Future generateMultipleDevicesPDF(List<Device> devices) async {
     try {
       final pdf = pw.Document();
 
@@ -62,9 +62,9 @@ class PDFService {
               children: [
                 _buildAllDevicesHeader(devices),
                 pw.SizedBox(height: 20),
-                // _buildAllDevicesSummary(devices),
-                // pw.SizedBox(height: 20),
-                // _buildOverallStatistics(devices),
+                _buildAllDevicesSummary(devices),
+                pw.SizedBox(height: 20),
+                _buildOverallStatistics(devices),
               ],
             );
           },
@@ -125,7 +125,7 @@ class PDFService {
   }
 
   // Header for all devices summary report
-  static pw.Widget _buildAllDevicesHeader(List devices) {
+  static pw.Widget _buildAllDevicesHeader(List<Device> devices) {
     return pw.Container(
       padding: const pw.EdgeInsets.all(20),
       decoration: pw.BoxDecoration(

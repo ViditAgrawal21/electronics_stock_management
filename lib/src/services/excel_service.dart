@@ -41,7 +41,7 @@ class ExcelService {
               0,
             ); // First column
 
-            if (rawMaterialName.trim().isEmpty) {
+            if (rawMaterialName.isEmpty) {
               print('Skipping row $rowIndex: Empty raw material name');
               continue;
             }
