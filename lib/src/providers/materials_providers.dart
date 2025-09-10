@@ -6,7 +6,6 @@ import '../services/excel_service.dart';
 import '../utils/search_trie.dart';
 import '../constants/app_config.dart';
 
-
 // Materials state notifier
 class MaterialsNotifier extends StateNotifier<AsyncValue<List<Material>>> {
   MaterialsNotifier() : super(const AsyncValue.loading()) {
@@ -51,9 +50,6 @@ class MaterialsNotifier extends StateNotifier<AsyncValue<List<Material>>> {
       _allMaterials = materialMap.values.toList();
       _rebuildSearchTrie();
       state = AsyncValue.data(_allMaterials);
-      
-      // Save to local storage after import
-      await saveMaterialsLocally();
     } catch (error, stackTrace) {
       state = AsyncValue.error(error, stackTrace);
     }
@@ -325,7 +321,9 @@ class MaterialsNotifier extends StateNotifier<AsyncValue<List<Material>>> {
       initialQuantity: json['initialQuantity'] as int,
       remainingQuantity: json['remainingQuantity'] as int,
       usedQuantity: json['usedQuantity'] as int,
-      lastUsedAt: DateTime.fromMillisecondsSinceEpoch(json['lastUsedAt'] as int),
+      lastUsedAt: DateTime.fromMillisecondsSinceEpoch(
+        json['lastUsedAt'] as int,
+      ),
       createdAt: DateTime.fromMillisecondsSinceEpoch(json['createdAt'] as int),
     );
   }
@@ -351,7 +349,11 @@ class MaterialsNotifier extends StateNotifier<AsyncValue<List<Material>>> {
       List<String>? jsonList = prefs.getStringList('materials_data');
       if (jsonList != null && jsonList.isNotEmpty) {
         _allMaterials = jsonList
-            .map((jsonStr) => _materialFromJson(jsonDecode(jsonStr) as Map<String, dynamic>))
+            .map(
+              (jsonStr) => _materialFromJson(
+                jsonDecode(jsonStr) as Map<String, dynamic>,
+              ),
+            )
             .toList();
         _rebuildSearchTrie();
         state = AsyncValue.data(_allMaterials);

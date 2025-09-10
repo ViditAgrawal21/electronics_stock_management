@@ -2,7 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../constants/app_string.dart';
 import '../constants/app_config.dart';
-import 'package:electronics_stock_management/src/models/materials.dart' as model;
+import 'package:electronics_stock_management/src/models/materials.dart'
+    as model;
 import '../providers/materials_providers.dart';
 import '../widgets/materials_card.dart';
 import '../widgets/search_bar.dart' as custom;
@@ -76,15 +77,17 @@ class _MaterialsListScreenState extends ConsumerState<MaterialsListScreen> {
           IconButton(
             icon: const Icon(Icons.file_upload),
             tooltip: AppStrings.importExcel,
-            onPressed: _isLoading ? null : () async {
-              await _handleImportExcel();
-              // Show save button after import
-              if (mounted) {
-                setState(() {
-                  _showSaveButton = true;
-                });
-              }
-            },
+            onPressed: _isLoading
+                ? null
+                : () async {
+                    await _handleImportExcel();
+                    // Show save button after import
+                    if (mounted) {
+                      setState(() {
+                        _showSaveButton = true;
+                      });
+                    }
+                  },
           ),
           // Export Excel button
           IconButton(
@@ -427,6 +430,11 @@ class _MaterialsListScreenState extends ConsumerState<MaterialsListScreen> {
                 ref.read(materialsProvider.notifier).addMaterial(material);
                 Navigator.of(context).pop();
 
+                // Hide save button after user modification
+                setState(() {
+                  _showSaveButton = false;
+                });
+
                 NotificationUtils.showSuccess(
                   context,
                   'Material added successfully',
@@ -523,6 +531,11 @@ class _MaterialsListScreenState extends ConsumerState<MaterialsListScreen> {
                     .updateMaterial(updatedMaterial);
                 Navigator.of(context).pop();
 
+                // Hide save button after user modification
+                setState(() {
+                  _showSaveButton = false;
+                });
+
                 NotificationUtils.showSuccess(
                   context,
                   'Material updated successfully',
@@ -553,6 +566,11 @@ class _MaterialsListScreenState extends ConsumerState<MaterialsListScreen> {
               ref.read(materialsProvider.notifier).deleteMaterial(material.id);
               Navigator.of(context).pop();
 
+              // Hide save button after user modification
+              setState(() {
+                _showSaveButton = false;
+              });
+
               NotificationUtils.showSuccess(
                 context,
                 'Material deleted successfully',
@@ -568,6 +586,11 @@ class _MaterialsListScreenState extends ConsumerState<MaterialsListScreen> {
     ref
         .read(materialsProvider.notifier)
         .updateRemainingQuantity(material.id, newQuantity);
+
+    // Hide save button after user modification
+    setState(() {
+      _showSaveButton = false;
+    });
 
     NotificationUtils.showSuccess(context, 'Quantity updated successfully');
   }
