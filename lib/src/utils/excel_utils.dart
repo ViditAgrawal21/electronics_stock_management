@@ -1,6 +1,6 @@
 import 'dart:io';
 import 'package:excel/excel.dart';
-import '../models/materials.dart';
+import 'package:electronics_stock_management/src/models/materials.dart';
 import '../models/bom.dart';
 
 class ExcelUtils {

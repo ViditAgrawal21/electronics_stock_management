@@ -213,4 +213,40 @@ class Material {
   bool get isOutOfStock => remainingQuantity <= 0;
 
   int get calculatedUsedQuantity => initialQuantity - remainingQuantity;
+
+  // Convert to JSON for local storage
+  Map<String, dynamic> toJson() {
+    return {
+      'id': id,
+      'name': name,
+      'initialQuantity': initialQuantity,
+      'remainingQuantity': remainingQuantity,
+      'usedQuantity': usedQuantity,
+      'description': description,
+      'category': category,
+      'unitCost': unitCost,
+      'supplier': supplier,
+      'location': location,
+      'createdAt': createdAt.toIso8601String(),
+      'lastUsedAt': lastUsedAt.toIso8601String(),
+    };
+  }
+
+  // Create from JSON for local storage
+  factory Material.fromJson(Map<String, dynamic> json) {
+    return Material(
+      id: json['id'] as String,
+      name: json['name'] as String,
+      initialQuantity: json['initialQuantity'] as int,
+      remainingQuantity: json['remainingQuantity'] as int,
+      usedQuantity: json['usedQuantity'] as int? ?? 0,
+      description: json['description'] as String?,
+      category: json['category'] as String?,
+      unitCost: json['unitCost'] as double?,
+      supplier: json['supplier'] as String?,
+      location: json['location'] as String?,
+      createdAt: DateTime.parse(json['createdAt'] as String),
+      lastUsedAt: DateTime.parse(json['lastUsedAt'] as String),
+    );
+  }
 }

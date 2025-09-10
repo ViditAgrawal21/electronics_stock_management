@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import '../models/materials.dart' as model;
+import 'package:electronics_stock_management/src/models/materials.dart' as model;
 import '../theme/app_theme.dart';
 import '../theme/text_styles.dart';
 

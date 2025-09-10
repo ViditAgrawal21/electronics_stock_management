@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../constants/app_string.dart';
 import '../constants/app_config.dart';
-import '../models/materials.dart' as model;
+import 'package:electronics_stock_management/src/models/materials.dart' as model;
 import '../providers/materials_providers.dart';
 import '../widgets/materials_card.dart';
 import '../widgets/search_bar.dart' as custom;
@@ -24,11 +24,44 @@ class _MaterialsListScreenState extends ConsumerState<MaterialsListScreen> {
   String _currentFilter = 'All Materials';
   String _currentSort = 'Name (A-Z)';
   bool _isLoading = false;
+  bool _showSaveButton = false;
 
   @override
   void dispose() {
     _searchController.dispose();
     super.dispose();
+  }
+
+  Future<void> _handleSaveData() async {
+    setState(() {
+      _isLoading = true;
+    });
+
+    try {
+      // Save current materials data locally using the provider's notifier
+      await ref.read(materialsProvider.notifier).saveMaterialsLocally();
+
+      if (mounted) {
+        setState(() {
+          _showSaveButton = false;
+        });
+
+        NotificationUtils.showSuccess(
+          context,
+          'Materials saved locally successfully',
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        NotificationUtils.showError(context, 'Save failed: $e');
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
+      }
+    }
   }
 
   @override
@@ -43,7 +76,15 @@ class _MaterialsListScreenState extends ConsumerState<MaterialsListScreen> {
           IconButton(
             icon: const Icon(Icons.file_upload),
             tooltip: AppStrings.importExcel,
-            onPressed: _isLoading ? null : _handleImportExcel,
+            onPressed: _isLoading ? null : () async {
+              await _handleImportExcel();
+              // Show save button after import
+              if (mounted) {
+                setState(() {
+                  _showSaveButton = true;
+                });
+              }
+            },
           ),
           // Export Excel button
           IconButton(
@@ -51,6 +92,13 @@ class _MaterialsListScreenState extends ConsumerState<MaterialsListScreen> {
             tooltip: AppStrings.exportExcel,
             onPressed: _isLoading ? null : _handleExportExcel,
           ),
+          // Save button (appears after import)
+          if (_showSaveButton)
+            IconButton(
+              icon: const Icon(Icons.save),
+              tooltip: 'Save Data Locally',
+              onPressed: _isLoading ? null : _handleSaveData,
+            ),
           // More options
           PopupMenuButton<String>(
             onSelected: (value) {

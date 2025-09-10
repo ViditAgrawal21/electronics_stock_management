@@ -1,8 +1,11 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import '../models/materials.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'dart:convert';
+import 'package:electronics_stock_management/src/models/materials.dart';
 import '../services/excel_service.dart';
 import '../utils/search_trie.dart';
 import '../constants/app_config.dart';
+
 
 // Materials state notifier
 class MaterialsNotifier extends StateNotifier<AsyncValue<List<Material>>> {
@@ -16,13 +19,13 @@ class MaterialsNotifier extends StateNotifier<AsyncValue<List<Material>>> {
   // Load materials (from local storage or initialize empty)
   Future<void> _loadMaterials() async {
     try {
-      // In a real app, you would load from local storage here
-      // For now, we'll start with an empty list
+      // Try to load from local storage first
+      await loadMaterialsFromLocal();
+    } catch (error, stackTrace) {
+      // If loading fails, start with empty list
       _allMaterials = [];
       _rebuildSearchTrie();
       state = AsyncValue.data(_allMaterials);
-    } catch (error, stackTrace) {
-      state = AsyncValue.error(error, stackTrace);
     }
   }
 
@@ -48,6 +51,9 @@ class MaterialsNotifier extends StateNotifier<AsyncValue<List<Material>>> {
       _allMaterials = materialMap.values.toList();
       _rebuildSearchTrie();
       state = AsyncValue.data(_allMaterials);
+      
+      // Save to local storage after import
+      await saveMaterialsLocally();
     } catch (error, stackTrace) {
       state = AsyncValue.error(error, stackTrace);
     }
@@ -67,6 +73,8 @@ class MaterialsNotifier extends StateNotifier<AsyncValue<List<Material>>> {
     _allMaterials.add(material);
     _searchTrie.insert(material.name, material.id);
     state = AsyncValue.data(List.from(_allMaterials));
+    // Save to local storage
+    saveMaterialsLocally();
   }
 
   // Update material
@@ -86,6 +94,8 @@ class MaterialsNotifier extends StateNotifier<AsyncValue<List<Material>>> {
       }
 
       state = AsyncValue.data(List.from(_allMaterials));
+      // Save to local storage
+      saveMaterialsLocally();
     }
   }
 
@@ -99,6 +109,8 @@ class MaterialsNotifier extends StateNotifier<AsyncValue<List<Material>>> {
         lastUsedAt: DateTime.now(),
       );
       state = AsyncValue.data(List.from(_allMaterials));
+      // Save to local storage
+      saveMaterialsLocally();
     }
   }
 
@@ -121,6 +133,8 @@ class MaterialsNotifier extends StateNotifier<AsyncValue<List<Material>>> {
       }
     }
     state = AsyncValue.data(List.from(_allMaterials));
+    // Save to local storage
+    saveMaterialsLocally();
   }
 
   // Delete material
@@ -132,6 +146,8 @@ class MaterialsNotifier extends StateNotifier<AsyncValue<List<Material>>> {
       _allMaterials.removeWhere((m) => m.id == materialId);
       _searchTrie.remove(materialToDelete.name, materialId);
       state = AsyncValue.data(List.from(_allMaterials));
+      // Save to local storage
+      saveMaterialsLocally();
     }
   }
 
@@ -282,6 +298,86 @@ class MaterialsNotifier extends StateNotifier<AsyncValue<List<Material>>> {
     _allMaterials.clear();
     _searchTrie.clear();
     state = const AsyncValue.data([]);
+    // Clear local storage
+    _clearLocalStorage();
+  }
+
+  // Helper method to serialize Material to JSON
+  Map<String, dynamic> _materialToJson(Material material) {
+    return {
+      'id': material.id,
+      'name': material.name,
+      'category': material.category,
+      'initialQuantity': material.initialQuantity,
+      'remainingQuantity': material.remainingQuantity,
+      'usedQuantity': material.usedQuantity,
+      'lastUsedAt': material.lastUsedAt.millisecondsSinceEpoch,
+      'createdAt': material.createdAt.millisecondsSinceEpoch,
+    };
+  }
+
+  // Helper method to deserialize Material from JSON
+  Material _materialFromJson(Map<String, dynamic> json) {
+    return Material(
+      id: json['id'] as String,
+      name: json['name'] as String,
+      category: json['category'] as String,
+      initialQuantity: json['initialQuantity'] as int,
+      remainingQuantity: json['remainingQuantity'] as int,
+      usedQuantity: json['usedQuantity'] as int,
+      lastUsedAt: DateTime.fromMillisecondsSinceEpoch(json['lastUsedAt'] as int),
+      createdAt: DateTime.fromMillisecondsSinceEpoch(json['createdAt'] as int),
+    );
+  }
+
+  // Save materials data locally using shared_preferences
+  Future<void> saveMaterialsLocally() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      List<String> jsonList = _allMaterials
+          .map((m) => jsonEncode(_materialToJson(m)))
+          .toList();
+      await prefs.setStringList('materials_data', jsonList);
+    } catch (e) {
+      // Silently handle error - don't throw to avoid breaking the app
+      print('Failed to save materials locally: $e');
+    }
+  }
+
+  // Load materials data from local storage
+  Future<void> loadMaterialsFromLocal() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      List<String>? jsonList = prefs.getStringList('materials_data');
+      if (jsonList != null && jsonList.isNotEmpty) {
+        _allMaterials = jsonList
+            .map((jsonStr) => _materialFromJson(jsonDecode(jsonStr) as Map<String, dynamic>))
+            .toList();
+        _rebuildSearchTrie();
+        state = AsyncValue.data(_allMaterials);
+      } else {
+        // No saved data, start with empty list
+        _allMaterials = [];
+        _rebuildSearchTrie();
+        state = AsyncValue.data(_allMaterials);
+      }
+    } catch (e, stackTrace) {
+      // If loading fails, start with empty list
+      _allMaterials = [];
+      _rebuildSearchTrie();
+      state = AsyncValue.data(_allMaterials);
+    }
+  }
+
+  // Clear local storage
+  Future<void> _clearLocalStorage() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.remove('materials_data');
+    } catch (e) {
+      // Silently handle error
+      print('Failed to clear local storage: $e');
+    }
   }
 }
 
