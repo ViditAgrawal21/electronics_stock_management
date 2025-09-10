@@ -1,10 +1,12 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:shared_preferences/shared_preferences.dart';
-import 'dart:convert';
+import 'package:hive_flutter/hive_flutter.dart';
 import 'package:electronics_stock_management/src/models/materials.dart';
 import '../services/excel_service.dart';
 import '../utils/search_trie.dart';
 import '../constants/app_config.dart';
+
+// Hive box name constant
+const String _materialsBoxName = 'materials_box';
 
 // Materials state notifier
 class MaterialsNotifier extends StateNotifier<AsyncValue<List<Material>>> {
@@ -15,12 +17,18 @@ class MaterialsNotifier extends StateNotifier<AsyncValue<List<Material>>> {
   final SearchTrie _searchTrie = SearchTrie();
   List<Material> _allMaterials = [];
 
-  // Load materials (from local storage or initialize empty)
+  // Get Hive box for materials
+  Future<Box<Material>> _getMaterialsBox() async {
+    return await Hive.openBox<Material>(_materialsBoxName);
+  }
+
+  // Load materials (from Hive or initialize empty)
   Future<void> _loadMaterials() async {
     try {
-      // Try to load from local storage first
+      // Load from Hive storage
       await loadMaterialsFromLocal();
     } catch (error, stackTrace) {
+      print('Error loading materials: $error');
       // If loading fails, start with empty list
       _allMaterials = [];
       _rebuildSearchTrie();
@@ -65,85 +73,117 @@ class MaterialsNotifier extends StateNotifier<AsyncValue<List<Material>>> {
   }
 
   // Add single material
-  void addMaterial(Material material) {
-    _allMaterials.add(material);
-    _searchTrie.insert(material.name, material.id);
-    state = AsyncValue.data(List.from(_allMaterials));
-    // Save to local storage
-    saveMaterialsLocally();
+  Future<void> addMaterial(Material material) async {
+    try {
+      _allMaterials.add(material);
+      _searchTrie.insert(material.name, material.id);
+      state = AsyncValue.data(List.from(_allMaterials));
+      
+      // Save to Hive immediately
+      final box = await _getMaterialsBox();
+      await box.put(material.id, material);
+    } catch (e) {
+      print('Error adding material: $e');
+    }
   }
 
   // Update material
-  void updateMaterial(Material updatedMaterial) {
-    int index = _allMaterials.indexWhere((m) => m.id == updatedMaterial.id);
-    if (index != -1) {
-      Material oldMaterial = _allMaterials[index];
-      _allMaterials[index] = updatedMaterial;
+  Future<void> updateMaterial(Material updatedMaterial) async {
+    try {
+      int index = _allMaterials.indexWhere((m) => m.id == updatedMaterial.id);
+      if (index != -1) {
+        Material oldMaterial = _allMaterials[index];
+        _allMaterials[index] = updatedMaterial;
 
-      // Update search trie if name changed
-      if (oldMaterial.name != updatedMaterial.name) {
-        _searchTrie.update(
-          oldMaterial.name,
-          updatedMaterial.name,
-          updatedMaterial.id,
-        );
+        // Update search trie if name changed
+        if (oldMaterial.name != updatedMaterial.name) {
+          _searchTrie.update(
+            oldMaterial.name,
+            updatedMaterial.name,
+            updatedMaterial.id,
+          );
+        }
+
+        state = AsyncValue.data(List.from(_allMaterials));
+        
+        // Update in Hive immediately
+        final box = await _getMaterialsBox();
+        await box.put(updatedMaterial.id, updatedMaterial);
       }
-
-      state = AsyncValue.data(List.from(_allMaterials));
-      // Save to local storage
-      saveMaterialsLocally();
+    } catch (e) {
+      print('Error updating material: $e');
     }
   }
 
   // Update remaining quantity only
-  void updateRemainingQuantity(String materialId, int newQuantity) {
-    int index = _allMaterials.indexWhere((m) => m.id == materialId);
-    if (index != -1) {
-      _allMaterials[index] = _allMaterials[index].copyWith(
-        remainingQuantity: newQuantity,
-        usedQuantity: _allMaterials[index].initialQuantity - newQuantity,
-        lastUsedAt: DateTime.now(),
-      );
-      state = AsyncValue.data(List.from(_allMaterials));
-      // Save to local storage
-      saveMaterialsLocally();
+  Future<void> updateRemainingQuantity(String materialId, int newQuantity) async {
+    try {
+      int index = _allMaterials.indexWhere((m) => m.id == materialId);
+      if (index != -1) {
+        _allMaterials[index] = _allMaterials[index].copyWith(
+          remainingQuantity: newQuantity,
+          usedQuantity: _allMaterials[index].initialQuantity - newQuantity,
+          lastUsedAt: DateTime.now(),
+        );
+        state = AsyncValue.data(List.from(_allMaterials));
+        
+        // Update in Hive immediately
+        final box = await _getMaterialsBox();
+        await box.put(materialId, _allMaterials[index]);
+      }
+    } catch (e) {
+      print('Error updating quantity: $e');
     }
   }
 
   // Use materials (decrease remaining quantity)
-  void useMaterials(Map<String, int> materialsToUse) {
-    for (String materialId in materialsToUse.keys) {
-      int quantityToUse = materialsToUse[materialId] ?? 0;
-      int index = _allMaterials.indexWhere((m) => m.id == materialId);
+  Future<void> useMaterials(Map<String, int> materialsToUse) async {
+    try {
+      final box = await _getMaterialsBox();
+      
+      for (String materialId in materialsToUse.keys) {
+        int quantityToUse = materialsToUse[materialId] ?? 0;
+        int index = _allMaterials.indexWhere((m) => m.id == materialId);
 
-      if (index != -1) {
-        Material material = _allMaterials[index];
-        int newRemainingQuantity = (material.remainingQuantity - quantityToUse)
-            .clamp(0, material.initialQuantity);
+        if (index != -1) {
+          Material material = _allMaterials[index];
+          int newRemainingQuantity = (material.remainingQuantity - quantityToUse)
+              .clamp(0, material.initialQuantity);
 
-        _allMaterials[index] = material.copyWith(
-          remainingQuantity: newRemainingQuantity,
-          usedQuantity: material.initialQuantity - newRemainingQuantity,
-          lastUsedAt: DateTime.now(),
-        );
+          _allMaterials[index] = material.copyWith(
+            remainingQuantity: newRemainingQuantity,
+            usedQuantity: material.initialQuantity - newRemainingQuantity,
+            lastUsedAt: DateTime.now(),
+          );
+          
+          // Update in Hive
+          await box.put(materialId, _allMaterials[index]);
+        }
       }
+      
+      state = AsyncValue.data(List.from(_allMaterials));
+    } catch (e) {
+      print('Error using materials: $e');
     }
-    state = AsyncValue.data(List.from(_allMaterials));
-    // Save to local storage
-    saveMaterialsLocally();
   }
 
   // Delete material
-  void deleteMaterial(String materialId) {
-    Material? materialToDelete = _allMaterials
-        .where((m) => m.id == materialId)
-        .firstOrNull;
-    if (materialToDelete != null) {
-      _allMaterials.removeWhere((m) => m.id == materialId);
-      _searchTrie.remove(materialToDelete.name, materialId);
-      state = AsyncValue.data(List.from(_allMaterials));
-      // Save to local storage
-      saveMaterialsLocally();
+  Future<void> deleteMaterial(String materialId) async {
+    try {
+      Material? materialToDelete = _allMaterials
+          .where((m) => m.id == materialId)
+          .firstOrNull;
+      if (materialToDelete != null) {
+        _allMaterials.removeWhere((m) => m.id == materialId);
+        _searchTrie.remove(materialToDelete.name, materialId);
+        state = AsyncValue.data(List.from(_allMaterials));
+        
+        // Delete from Hive
+        final box = await _getMaterialsBox();
+        await box.delete(materialId);
+      }
+    } catch (e) {
+      print('Error deleting material: $e');
     }
   }
 
@@ -290,80 +330,54 @@ class MaterialsNotifier extends StateNotifier<AsyncValue<List<Material>>> {
   }
 
   // Reset all data
-  void resetData() {
-    _allMaterials.clear();
-    _searchTrie.clear();
-    state = const AsyncValue.data([]);
-    // Clear local storage
-    _clearLocalStorage();
-  }
-
-  // Helper method to serialize Material to JSON
-  Map<String, dynamic> _materialToJson(Material material) {
-    return {
-      'id': material.id,
-      'name': material.name,
-      'category': material.category,
-      'initialQuantity': material.initialQuantity,
-      'remainingQuantity': material.remainingQuantity,
-      'usedQuantity': material.usedQuantity,
-      'lastUsedAt': material.lastUsedAt.millisecondsSinceEpoch,
-      'createdAt': material.createdAt.millisecondsSinceEpoch,
-    };
-  }
-
-  // Helper method to deserialize Material from JSON
-  Material _materialFromJson(Map<String, dynamic> json) {
-    return Material(
-      id: json['id'] as String,
-      name: json['name'] as String,
-      category: json['category'] as String,
-      initialQuantity: json['initialQuantity'] as int,
-      remainingQuantity: json['remainingQuantity'] as int,
-      usedQuantity: json['usedQuantity'] as int,
-      lastUsedAt: DateTime.fromMillisecondsSinceEpoch(
-        json['lastUsedAt'] as int,
-      ),
-      createdAt: DateTime.fromMillisecondsSinceEpoch(json['createdAt'] as int),
-    );
-  }
-
-  // Save materials data locally using shared_preferences
-  Future<void> saveMaterialsLocally() async {
+  Future<void> resetData() async {
     try {
-      final prefs = await SharedPreferences.getInstance();
-      List<String> jsonList = _allMaterials
-          .map((m) => jsonEncode(_materialToJson(m)))
-          .toList();
-      await prefs.setStringList('materials_data', jsonList);
+      _allMaterials.clear();
+      _searchTrie.clear();
+      state = const AsyncValue.data([]);
+      
+      // Clear Hive storage
+      final box = await _getMaterialsBox();
+      await box.clear();
     } catch (e) {
-      // Silently handle error - don't throw to avoid breaking the app
-      print('Failed to save materials locally: $e');
+      print('Error resetting data: $e');
     }
   }
 
-  // Load materials data from local storage
+  // Save materials data locally using Hive - called by save button
+  Future<void> saveMaterialsLocally() async {
+    try {
+      final box = await _getMaterialsBox();
+      
+      // Clear existing data and save all current materials
+      await box.clear();
+      
+      // Create a map of materials with IDs as keys
+      final Map<String, Material> materialMap = {
+        for (Material material in _allMaterials) material.id: material
+      };
+      
+      await box.putAll(materialMap);
+      print('Successfully saved ${_allMaterials.length} materials to Hive');
+    } catch (e) {
+      print('Failed to save materials locally: $e');
+      throw Exception('Failed to save materials: $e');
+    }
+  }
+
+  // Load materials data from Hive storage
   Future<void> loadMaterialsFromLocal() async {
     try {
-      final prefs = await SharedPreferences.getInstance();
-      List<String>? jsonList = prefs.getStringList('materials_data');
-      if (jsonList != null && jsonList.isNotEmpty) {
-        _allMaterials = jsonList
-            .map(
-              (jsonStr) => _materialFromJson(
-                jsonDecode(jsonStr) as Map<String, dynamic>,
-              ),
-            )
-            .toList();
-        _rebuildSearchTrie();
-        state = AsyncValue.data(_allMaterials);
-      } else {
-        // No saved data, start with empty list
-        _allMaterials = [];
-        _rebuildSearchTrie();
-        state = AsyncValue.data(_allMaterials);
-      }
-    } catch (e, stackTrace) {
+      final box = await _getMaterialsBox();
+      final List<Material> materials = box.values.toList();
+      
+      _allMaterials = materials;
+      _rebuildSearchTrie();
+      state = AsyncValue.data(_allMaterials);
+      
+      print('Loaded ${materials.length} materials from Hive storage');
+    } catch (e) {
+      print('Error loading materials from Hive: $e');
       // If loading fails, start with empty list
       _allMaterials = [];
       _rebuildSearchTrie();
@@ -371,15 +385,9 @@ class MaterialsNotifier extends StateNotifier<AsyncValue<List<Material>>> {
     }
   }
 
-  // Clear local storage
-  Future<void> _clearLocalStorage() async {
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.remove('materials_data');
-    } catch (e) {
-      // Silently handle error
-      print('Failed to clear local storage: $e');
-    }
+  // Force refresh materials from storage
+  Future<void> refreshMaterials() async {
+    await _loadMaterials();
   }
 }
 

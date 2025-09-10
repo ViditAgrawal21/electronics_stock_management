@@ -1,17 +1,43 @@
-// Material model with preserved raw material name handling
+import 'package:hive/hive.dart';
 
-class Material {
+part 'materials.g.dart'; // This will be generated
+
+@HiveType(typeId: 0)
+class Material extends HiveObject {
+  @HiveField(0)
   final String id;
+  
+  @HiveField(1)
   final String name; // This should be the raw material name exactly as in Excel
+  
+  @HiveField(2)
   final int initialQuantity;
+  
+  @HiveField(3)
   final int remainingQuantity;
+  
+  @HiveField(4)
   final int usedQuantity;
+  
+  @HiveField(5)
   final String? description;
+  
+  @HiveField(6)
   final String? category;
+  
+  @HiveField(7)
   final double? unitCost;
+  
+  @HiveField(8)
   final String? supplier;
+  
+  @HiveField(9)
   final String? location;
+  
+  @HiveField(10)
   final DateTime createdAt;
+  
+  @HiveField(11)
   final DateTime lastUsedAt;
 
   Material({
@@ -192,8 +218,7 @@ class Material {
   }) {
     return Material(
       id: id ?? this.id,
-      name:
-          name ?? this.name, // Preserve original name if not explicitly changed
+      name: name ?? this.name, // Preserve original name if not explicitly changed
       initialQuantity: initialQuantity ?? this.initialQuantity,
       remainingQuantity: remainingQuantity ?? this.remainingQuantity,
       usedQuantity: usedQuantity ?? this.usedQuantity,
@@ -214,7 +239,7 @@ class Material {
 
   int get calculatedUsedQuantity => initialQuantity - remainingQuantity;
 
-  // Convert to JSON for local storage
+  // Convert to JSON for backwards compatibility
   Map<String, dynamic> toJson() {
     return {
       'id': id,
@@ -232,7 +257,7 @@ class Material {
     };
   }
 
-  // Create from JSON for local storage
+  // Create from JSON for backwards compatibility
   factory Material.fromJson(Map<String, dynamic> json) {
     return Material(
       id: json['id'] as String,
