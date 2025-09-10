@@ -123,37 +123,37 @@ class _PcbCreationScreenState extends ConsumerState<PcbCreationScreen>
     ]);
   }
 
-  Widget _buildComponentsSection() {
-    return _buildCard('Components (${_subComponents.length})', Icons.category, [
-      Row(
-        children: [
-          Expanded(
-            child: CustomOutlinedButton(
-              text: 'Quick Add',
-              onPressed: _showQuickAddDialog,
-              icon: Icons.flash_on,
-            ),
+Widget _buildComponentsSection() {
+  return _buildCard('Components (${_subComponents.length}) - Optional', Icons.category, [
+    Row(
+      children: [
+        Expanded(
+          child: CustomOutlinedButton(
+            text: 'Quick Add',
+            onPressed: _showQuickAddDialog,
+            icon: Icons.flash_on,
           ),
-          const SizedBox(width: 8),
-          Expanded(
-            child: CustomButton(
-              text: 'Custom',
-              onPressed: () => _showComponentDialog(),
-              icon: Icons.add,
-            ),
+        ),
+        const SizedBox(width: 8),
+        Expanded(
+          child: CustomButton(
+            text: 'Custom',
+            onPressed: () => _showComponentDialog(),
+            icon: Icons.add,
           ),
-        ],
-      ),
-      const SizedBox(height: 16),
-      _subComponents.isEmpty
-          ? _buildEmptyState(
-              'No components added',
-              'Use Quick Add or Custom to add components',
-              Icons.category,
-            )
-          : _buildItemsList(_subComponents, _buildComponentCard),
-    ]);
-  }
+        ),
+      ],
+    ),
+    const SizedBox(height: 16),
+    _subComponents.isEmpty
+        ? _buildEmptyState(
+            'No components added',
+            'Components are optional. Add them if needed.',
+            Icons.category,
+          )
+        : _buildItemsList(_subComponents, _buildComponentCard),
+  ]);
+}
 
   Widget _buildPcbSection() {
     return _buildCard('PCB Boards (${_pcbs.length})', Icons.developer_board, [
@@ -589,168 +589,169 @@ class _PcbCreationScreenState extends ConsumerState<PcbCreationScreen>
     }
   }
 
-  Future<void> _handleCreateDevice() async {
-    if (!_formKey.currentState!.validate() ||
-        _deviceNameController.text.trim().isEmpty ||
-        _subComponents.isEmpty ||
-        _pcbs.isEmpty) {
+Future<void> _handleCreateDevice() async {
+  if (!_formKey.currentState!.validate() ||
+      _deviceNameController.text.trim().isEmpty ||
+      _pcbs.isEmpty) {  // Removed _subComponents.isEmpty from here
+    
+    String errorMessage = 'Please fill all required fields';
+    if (_deviceNameController.text.trim().isEmpty) {
+      errorMessage = 'Device name is required';
+    } else if (_pcbs.isEmpty) {
+      errorMessage = 'At least one PCB board is required';
+    }
+    
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(errorMessage),
+        backgroundColor: Colors.orange,
+      ),
+    );
+    return;
+  }
+
+  setState(() => _isLoading = true);
+
+  try {
+    final deviceId = DateTime.now().millisecondsSinceEpoch.toString();
+    final device = Device(
+      id: deviceId,
+      name: _deviceNameController.text.trim(),
+      subComponents: _subComponents, // This can now be empty
+      pcbs: _pcbs.map((pcb) => pcb.copyWith(deviceId: deviceId)).toList(),
+      createdAt: DateTime.now(),
+      updatedAt: DateTime.now(),
+      description: _descriptionController.text.trim().isEmpty
+          ? null
+          : _descriptionController.text.trim(),
+    );
+
+    ref.read(deviceProvider.notifier).addDevice(device);
+
+    if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('Please fill all required fields'),
-          backgroundColor: Colors.orange,
+          content: Text('Device created successfully!'),
+          backgroundColor: Colors.green,
         ),
       );
-      return;
+      _showSuccessDialog(device);
     }
-
-    setState(() => _isLoading = true);
-
-    try {
-      final deviceId = DateTime.now().millisecondsSinceEpoch.toString();
-      final device = Device(
-        id: deviceId,
-        name: _deviceNameController.text.trim(),
-        subComponents: _subComponents,
-        pcbs: _pcbs.map((pcb) => pcb.copyWith(deviceId: deviceId)).toList(),
-        createdAt: DateTime.now(),
-        updatedAt: DateTime.now(),
-        description: _descriptionController.text.trim().isEmpty
-            ? null
-            : _descriptionController.text.trim(),
+  } catch (e) {
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Failed: $e'), backgroundColor: Colors.red),
       );
-
-      ref.read(deviceProvider.notifier).addDevice(device);
-
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Device created successfully!'),
-            backgroundColor: Colors.green,
-          ),
-        );
-        _showSuccessDialog(device);
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Failed: $e'), backgroundColor: Colors.red),
-        );
-      }
-    } finally {
-      if (mounted) setState(() => _isLoading = false);
     }
+  } finally {
+    if (mounted) setState(() => _isLoading = false);
   }
+}
 
-  void _showSuccessDialog(Device device) {
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (context) => AlertDialog(
-        icon: const Icon(Icons.check_circle, color: Colors.green, size: 48),
-        title: const Text('Device Created!'),
-        content: Text(
-          '${device.name} created with ${device.totalSubComponents} components and ${device.totalPcbs} PCBs',
-        ),
-        actions: [
-          if (!device.isReadyForProduction)
-            CustomOutlinedButton(
-              text: 'Upload BOM',
-              onPressed: () {
-                Navigator.pop(context);
-                if (device.pcbs.isNotEmpty)
-                  _navigateToBomUpload(device.pcbs.first, 0);
-              },
-            ),
-          CustomButton(
-            text: 'Done',
+void _showSuccessDialog(Device device) {
+  final componentText = device.subComponents.isEmpty 
+      ? 'no components' 
+      : '${device.totalSubComponents} components';
+      
+  showDialog(
+    context: context,
+    barrierDismissible: false,
+    builder: (context) => AlertDialog(
+      icon: const Icon(Icons.check_circle, color: Colors.green, size: 48),
+      title: const Text('Device Created!'),
+      content: Text(
+        '${device.name} created with $componentText and ${device.totalPcbs} PCBs',
+      ),
+      actions: [
+        if (!device.isReadyForProduction)
+          CustomOutlinedButton(
+            text: 'Upload BOM',
             onPressed: () {
               Navigator.pop(context);
-              Navigator.pop(context);
+              if (device.pcbs.isNotEmpty)
+                _navigateToBomUpload(device.pcbs.first, 0);
             },
           ),
-        ],
-      ),
-    );
-  }
-
-  void _showHelpDialog() {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('PCB Creation Help'),
-        content: SingleChildScrollView(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const Text(
-                'How to create a device:',
-                style: TextStyle(fontWeight: FontWeight.bold),
-              ),
-              const SizedBox(height: 8),
-              const Text('1. Select device type (or add custom)'),
-              const Text('2. Add components using Quick Add or Custom'),
-              const Text('3. Add PCB boards'),
-              const Text('4. Upload BOMs for each PCB'),
-              const SizedBox(height: 12),
-              const Text(
-                'Device Types:',
-                style: TextStyle(fontWeight: FontWeight.bold),
-              ),
-              const SizedBox(height: 4),
-              const Text('• Use predefined types or create custom ones'),
-              const Text('• Click "Add Custom Type..." to create new types'),
-              const Text('• Edit existing types with the edit button'),
-              const Text('• Custom types are marked with a star'),
-              const Text('• Delete custom types using the chip close button'),
-              const SizedBox(height: 12),
-              const Text(
-                'Available Predefined Types:',
-                style: TextStyle(fontWeight: FontWeight.bold),
-              ),
-              const SizedBox(height: 4),
-              const Text('• Multigauging, Leak Tester, Flow Tester'),
-              const Text('• Single/Dual wiper PCB, AMR'),
-              const Text('• WIFI Dongal PCB, Diode based wag9'),
-              const SizedBox(height: 12),
-              const Text(
-                'Quick Add Components:',
-                style: TextStyle(fontWeight: FontWeight.bold),
-              ),
-              const SizedBox(height: 4),
-              const Text('• Enclosure, Display, SMPS, Manifold'),
-              const Text('• DP Sensor, Restkit, Regulator, Filter'),
-              const Text('• Calport, Nut'),
-              const SizedBox(height: 12),
-              Container(
-                padding: const EdgeInsets.all(8),
-                decoration: BoxDecoration(
-                  color: Colors.blue[50],
-                  borderRadius: BorderRadius.circular(6),
-                  border: Border.all(color: Colors.blue[200]!),
-                ),
-                child: const Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'Tips:',
-                      style: TextStyle(fontWeight: FontWeight.bold),
-                    ),
-                    SizedBox(height: 4),
-                    Text('• Custom device types are saved for future use'),
-                    Text('• You can create variants of existing types'),
-                    Text('• All fields marked with * are required'),
-                    Text('• BOMs can be uploaded after creating the device'),
-                  ],
-                ),
-              ),
-            ],
-          ),
+        CustomButton(
+          text: 'Done',
+          onPressed: () {
+            Navigator.pop(context);
+            Navigator.pop(context);
+          },
         ),
-        actions: [
-          CustomButton(text: 'Got it', onPressed: () => Navigator.pop(context)),
-        ],
+      ],
+    ),
+  );
+}
+
+
+void _showHelpDialog() {
+  showDialog(
+    context: context,
+    builder: (context) => AlertDialog(
+      title: const Text('PCB Creation Help'),
+      content: SingleChildScrollView(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Text(
+              'How to create a device:',
+              style: TextStyle(fontWeight: FontWeight.bold),
+            ),
+            const SizedBox(height: 8),
+            const Text('1. Enter device name (required)'),
+            const Text('2. Add components (optional)'),
+            const Text('3. Add PCB boards (required)'),
+            const Text('4. Upload BOMs for each PCB'),
+            const SizedBox(height: 12),
+            const Text(
+              'Components (Optional):',
+              style: TextStyle(fontWeight: FontWeight.bold),
+            ),
+            const SizedBox(height: 4),
+            const Text('• Use Quick Add for common components'),
+            const Text('• Add custom components as needed'),
+            const Text('• Components can be added later if needed'),
+            const SizedBox(height: 12),
+            const Text(
+              'Quick Add Components:',
+              style: TextStyle(fontWeight: FontWeight.bold),
+            ),
+            const SizedBox(height: 4),
+            const Text('• Enclosure, Display, SMPS, Manifold'),
+            const Text('• DP Sensor, Restkit, Regulator, Filter'),
+            const Text('• Calport, Nut'),
+            const SizedBox(height: 12),
+            Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: Colors.blue[50],
+                borderRadius: BorderRadius.circular(6),
+                border: Border.all(color: Colors.blue[200]!),
+              ),
+              child: const Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Requirements:',
+                    style: TextStyle(fontWeight: FontWeight.bold),
+                  ),
+                  SizedBox(height: 4),
+                  Text('• Device name is required'),
+                  Text('• At least one PCB board is required'),
+                  Text('• Components are optional'),
+                  Text('• BOMs can be uploaded after creating the device'),
+                ],
+              ),
+            ),
+          ],
+        ),
       ),
-    );
-  }
+      actions: [
+        CustomButton(text: 'Got it', onPressed: () => Navigator.pop(context)),
+      ],
+    ),
+  );
+}
 }

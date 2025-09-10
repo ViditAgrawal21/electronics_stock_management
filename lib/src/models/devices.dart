@@ -1,9 +1,20 @@
+import 'package:hive/hive.dart';
 import 'pcb.dart';
 
-class SubComponent {
+part 'devices.g.dart'; // Generated file
+
+@HiveType(typeId: 0)
+class SubComponent extends HiveObject {
+  @HiveField(0)
   final String id;
+  
+  @HiveField(1)
   final String name;
+  
+  @HiveField(2)
   final int quantity;
+  
+  @HiveField(3)
   final String? description;
 
   SubComponent({
@@ -63,13 +74,27 @@ class SubComponent {
   int get hashCode => id.hashCode;
 }
 
-class Device {
+@HiveType(typeId: 1)
+class Device extends HiveObject {
+  @HiveField(0)
   final String id;
+  
+  @HiveField(1)
   final String name;
+  
+  @HiveField(2)
   final List<SubComponent> subComponents;
+  
+  @HiveField(3)
   final List<PCB> pcbs;
+  
+  @HiveField(4)
   final DateTime createdAt;
+  
+  @HiveField(5)
   final DateTime updatedAt;
+  
+  @HiveField(6)
   final String? description;
 
   Device({
@@ -186,14 +211,30 @@ class Device {
   int get hashCode => id.hashCode;
 }
 
-class ProductionRecord {
+@HiveType(typeId: 2)
+class ProductionRecord extends HiveObject {
+  @HiveField(0)
   final String id;
+  
+  @HiveField(1)
   final String deviceId;
+  
+  @HiveField(2)
   final String deviceName;
+  
+  @HiveField(3)
   final int quantityProduced;
+  
+  @HiveField(4)
   final DateTime productionDate;
+  
+  @HiveField(5)
   final Map<String, int> materialsUsed; // materialId -> quantity used
+  
+  @HiveField(6)
   final double totalCost;
+  
+  @HiveField(7)
   final String? notes;
 
   ProductionRecord({

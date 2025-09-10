@@ -82,7 +82,7 @@ class _DeviceHistoryScreenState extends ConsumerState<DeviceHistoryScreen>
       ),
     );
   }
-
+  
   Widget _buildHistoryTab(List<ProductionRecord> history) {
     final devicesAsync = ref.watch(deviceProvider);
 
@@ -195,128 +195,341 @@ class _DeviceHistoryScreenState extends ConsumerState<DeviceHistoryScreen>
   }
 
   Widget _buildEnhancedDeviceCard(Device device) {
-    return Card(
-      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-      elevation: 3,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      child: Column(
-        children: [
-          // Header Section
-          Container(
-            padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              color: device.isReadyForProduction
-                  ? Colors.green[50]
-                  : Colors.orange[50],
-              borderRadius: const BorderRadius.only(
-                topLeft: Radius.circular(12),
-                topRight: Radius.circular(12),
-              ),
+  return Card(
+    margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+    elevation: 3,
+    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+    child: Column(
+      children: [
+        // Header Section (modified to include delete button)
+        Container(
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: device.isReadyForProduction
+                ? Colors.green[50]
+                : Colors.orange[50],
+            borderRadius: const BorderRadius.only(
+              topLeft: Radius.circular(12),
+              topRight: Radius.circular(12),
             ),
-            child: Row(
-              children: [
-                CircleAvatar(
-                  backgroundColor: device.isReadyForProduction
-                      ? Colors.green
-                      : Colors.orange,
-                  child: Icon(
-                    device.isReadyForProduction ? Icons.check : Icons.pending,
-                    color: Colors.white,
-                  ),
+          ),
+          child: Row(
+            children: [
+              CircleAvatar(
+                backgroundColor: device.isReadyForProduction
+                    ? Colors.green
+                    : Colors.orange,
+                child: Icon(
+                  device.isReadyForProduction ? Icons.check : Icons.pending,
+                  color: Colors.white,
                 ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        device.name,
-                        style: const TextStyle(
-                          fontSize: 18,
-                          fontWeight: FontWeight.bold,
-                        ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      device.name,
+                      style: const TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
                       ),
-                      if (device.description != null) ...[
-                        const SizedBox(height: 4),
-                        Text(
-                          device.description!,
-                          style: TextStyle(
-                            fontSize: 14,
-                            color: Colors.grey[600],
-                          ),
-                        ),
-                      ],
+                    ),
+                    if (device.description != null) ...[
                       const SizedBox(height: 4),
                       Text(
-                        'Created: ${_formatDateTime(device.createdAt)}',
-                        style: const TextStyle(fontSize: 12),
+                        device.description!,
+                        style: TextStyle(
+                          fontSize: 14,
+                          color: Colors.grey[600],
+                        ),
+                      ),
+                    ],
+                    const SizedBox(height: 4),
+                    Text(
+                      'Created: ${_formatDateTime(device.createdAt)}',
+                      style: const TextStyle(fontSize: 12),
+                    ),
+                  ],
+                ),
+              ),
+              // Action buttons
+              Column(
+                children: [
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      IconButton(
+                        icon: const Icon(Icons.picture_as_pdf),
+                        onPressed: () => _generateSingleDevicePDF(device),
+                        tooltip: 'Export to PDF',
+                      ),
+                      PopupMenuButton<String>(
+                        icon: const Icon(Icons.more_vert),
+                        onSelected: (value) {
+                          switch (value) {
+                            case 'delete':
+                              _confirmDeleteDevice(device);
+                              break;
+                            case 'duplicate':
+                              _duplicateDevice(device);
+                              break;
+                          }
+                        },
+                        itemBuilder: (context) => [
+                          const PopupMenuItem(
+                            value: 'duplicate',
+                            child: Row(
+                              children: [
+                                Icon(Icons.copy, size: 18),
+                                SizedBox(width: 8),
+                                Text('Duplicate'),
+                              ],
+                            ),
+                          ),
+                          const PopupMenuItem(
+                            value: 'delete',
+                            child: Row(
+                              children: [
+                                Icon(Icons.delete, size: 18, color: Colors.red),
+                                SizedBox(width: 8),
+                                Text('Delete', style: TextStyle(color: Colors.red)),
+                              ],
+                            ),
+                          ),
+                        ],
                       ),
                     ],
                   ),
-                ),
-                Column(
-                  children: [
-                    IconButton(
-                      icon: const Icon(Icons.picture_as_pdf),
-                      onPressed: () => _generateSingleDevicePDF(device),
-                      tooltip: 'Export to PDF',
+                  Text(
+                    device.isReadyForProduction ? 'Ready' : 'Pending',
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: device.isReadyForProduction
+                          ? Colors.green
+                          : Colors.orange,
+                      fontWeight: FontWeight.w500,
                     ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+
+        // Rest of your existing card content...
+        // Quick Stats
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+          child: Row(
+            children: [
+              Expanded(
+                child: _buildQuickStat(
+                  'Components',
+                  device.subComponents.length.toString(),
+                  Icons.category,
+                  Colors.blue,
+                ),
+              ),
+              Expanded(
+                child: _buildQuickStat(
+                  'PCB Boards',
+                  device.pcbs.length.toString(),
+                  Icons.developer_board,
+                  Colors.purple,
+                ),
+              ),
+              Expanded(
+                child: _buildQuickStat(
+                  'Total BOM Items',
+                  device.totalBomItems.toString(),
+                  Icons.list_alt,
+                  Colors.green,
+                ),
+              ),
+            ],
+          ),
+        ),
+
+        // Your existing detailed breakdown sections...
+        _buildComponentsSection(device),
+        _buildPcbSection(device),
+      ],
+    ),
+  );
+}
+Future<void> _duplicateDevice(Device originalDevice) async {
+  try {
+    final duplicatedDevice = originalDevice.copyWith(
+      id: DateTime.now().millisecondsSinceEpoch.toString(),
+      name: '${originalDevice.name} (Copy)',
+      createdAt: DateTime.now(),
+      updatedAt: DateTime.now(),
+    );
+
+    await ref.read(deviceProvider.notifier).addDevice(duplicatedDevice);
+
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Device "${originalDevice.name}" duplicated'),
+          backgroundColor: Colors.blue,
+        ),
+      );
+    }
+  } catch (error) {
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Failed to duplicate device: $error'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
+  }
+}
+Future<void> _confirmDeleteDevice(Device device) async {
+  final confirmed = await showDialog<bool>(
+    context: context,
+    builder: (context) => AlertDialog(
+      title: const Text('Delete Device'),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text('Are you sure you want to delete "${device.name}"?'),
+          const SizedBox(height: 16),
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: Colors.red[50],
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(color: Colors.red[200]!),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Icon(Icons.warning, color: Colors.red[600], size: 18),
+                    const SizedBox(width: 8),
                     Text(
-                      device.isReadyForProduction ? 'Ready' : 'Pending',
+                      'This action cannot be undone:',
                       style: TextStyle(
-                        fontSize: 12,
-                        color: device.isReadyForProduction
-                            ? Colors.green
-                            : Colors.orange,
-                        fontWeight: FontWeight.w500,
+                        fontWeight: FontWeight.w600,
+                        color: Colors.red[700],
                       ),
                     ),
                   ],
                 ),
-              ],
-            ),
-          ),
-
-          // Quick Stats
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-            child: Row(
-              children: [
-                Expanded(
-                  child: _buildQuickStat(
-                    'Components',
-                    device.subComponents.length.toString(),
-                    Icons.category,
-                    Colors.blue,
-                  ),
-                ),
-                Expanded(
-                  child: _buildQuickStat(
-                    'PCB Boards',
-                    device.pcbs.length.toString(),
-                    Icons.developer_board,
-                    Colors.purple,
-                  ),
-                ),
-                Expanded(
-                  child: _buildQuickStat(
-                    'Total BOM Items',
-                    device.totalBomItems.toString(),
-                    Icons.list_alt,
-                    Colors.green,
+                const SizedBox(height: 8),
+                Text(
+                  '• Device and all its data will be permanently deleted\n'
+                  '• ${device.pcbs.length} PCB(s) will be removed\n'
+                  '• ${device.subComponents.length} component(s) will be removed\n'
+                  '• All production history will be deleted',
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: Colors.red[600],
                   ),
                 ),
               ],
             ),
           ),
-
-          // Detailed Breakdown Sections
-          _buildComponentsSection(device),
-          _buildPcbSection(device),
         ],
       ),
-    );
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(false),
+          child: const Text('Cancel'),
+        ),
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(true),
+          style: TextButton.styleFrom(
+            foregroundColor: Colors.red,
+          ),
+          child: const Text('Delete'),
+        ),
+      ],
+    ),
+  );
+
+  if (confirmed == true && mounted) {
+    await _deleteDevice(device);
   }
+}
+
+Future<void> _deleteDevice(Device device) async {
+  try {
+    // Show loading indicator
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => const Center(
+        child: CircularProgressIndicator(),
+      ),
+    );
+
+    // Delete the device
+    await ref.read(deviceProvider.notifier).deleteDevice(device.id);
+
+    // Close loading dialog
+    if (mounted) Navigator.of(context).pop();
+
+    // Show success message
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Device "${device.name}" deleted successfully'),
+          backgroundColor: Colors.green,
+          action: SnackBarAction(
+            label: 'Undo',
+            textColor: Colors.white,
+            onPressed: () => _restoreDevice(device),
+          ),
+        ),
+      );
+    }
+  } catch (error) {
+    // Close loading dialog
+    if (mounted) Navigator.of(context).pop();
+
+    // Show error message
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Failed to delete device: $error'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
+  }
+}
+
+Future<void> _restoreDevice(Device device) async {
+  try {
+    await ref.read(deviceProvider.notifier).addDevice(device);
+    
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Device "${device.name}" restored'),
+          backgroundColor: Colors.green,
+        ),
+      );
+    }
+  } catch (error) {
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Failed to restore device: $error'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
+  }
+}
 
   Widget _buildQuickStat(
     String label,

@@ -1,10 +1,15 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:hive/hive.dart';
 import '../models/devices.dart';
 import '../models/pcb.dart';
 import '../models/bom.dart';
 import '../models/materials.dart';
 
-// Device state notifier
+// Hive box keys
+const String _devicesBoxKey = 'devices_box';
+const String _productionHistoryBoxKey = 'production_history_box';
+
+// Device state notifier with Hive persistence
 class DeviceNotifier extends StateNotifier<AsyncValue<List<Device>>> {
   DeviceNotifier() : super(const AsyncValue.loading()) {
     _loadDevices();
@@ -12,108 +17,144 @@ class DeviceNotifier extends StateNotifier<AsyncValue<List<Device>>> {
 
   List<Device> _allDevices = [];
   List<ProductionRecord> _productionHistory = [];
+  
+  // Hive boxes
+  Box<Device>? _devicesBox;
+  Box<ProductionRecord>? _productionHistoryBox;
 
-  // Load devices (from local storage or initialize empty)
+  // Load devices from Hive storage
   Future<void> _loadDevices() async {
     try {
-      // In a real app, you would load from local storage here
-      _allDevices = [];
+      // Open Hive boxes
+      _devicesBox = await Hive.openBox<Device>(_devicesBoxKey);
+      _productionHistoryBox = await Hive.openBox<ProductionRecord>(_productionHistoryBoxKey);
+
+      // Load devices from Hive
+      _allDevices = _devicesBox?.values.toList() ?? [];
+      _productionHistory = _productionHistoryBox?.values.toList() ?? [];
+
+      // Sort production history by date (most recent first)
+      _productionHistory.sort((a, b) => b.productionDate.compareTo(a.productionDate));
+
+      print('Loaded ${_allDevices.length} devices from Hive storage');
+      print('Loaded ${_productionHistory.length} production records from Hive storage');
+
       state = AsyncValue.data(_allDevices);
     } catch (error, stackTrace) {
+      print('Error loading devices from Hive: $error');
       state = AsyncValue.error(error, stackTrace);
     }
   }
 
   // Add new device
-  void addDevice(Device device) {
-    _allDevices.add(device);
-    _saveToStorage(); // Add this method
-    state = AsyncValue.data(List.from(_allDevices));
-  }
-
-  // Save to local storage (simplified for demo)
-  void _saveToStorage() {
-    // In a real app, save to SharedPreferences or SQLite
-    print('Saving ${_allDevices.length} devices to storage');
-    for (var device in _allDevices) {
-      print('Device: ${device.name} with ${device.pcbs.length} PCBs');
+  Future<void> addDevice(Device device) async {
+    try {
+      // Add to local list
+      _allDevices.add(device);
+      
+      // Save to Hive
+      await _devicesBox?.put(device.id, device);
+      
+      // Update state
+      state = AsyncValue.data(List.from(_allDevices));
+      
+      print('Device ${device.name} added and saved to Hive');
+    } catch (error) {
+      print('Error adding device to Hive: $error');
+      // Remove from local list if Hive save failed
+      _allDevices.removeWhere((d) => d.id == device.id);
+      rethrow;
     }
   }
 
-  // Mock data for testing
-  List<Device> _getMockDevices() {
-    return [
-      Device(
-        id: 'device_1',
-        name: 'Air Leak Tester',
-        subComponents: [
-          SubComponent(id: 'sc_1', name: 'Enclosure', quantity: 1),
-          SubComponent(id: 'sc_2', name: 'Display', quantity: 1),
-          SubComponent(id: 'sc_3', name: 'SMPS', quantity: 1),
-        ],
-        pcbs: [
-          PCB(
-            id: 'pcb_1',
-            name: 'Cape Board',
-            deviceId: 'device_1',
-            createdAt: DateTime.now(),
-            updatedAt: DateTime.now(),
-          ),
-          PCB(
-            id: 'pcb_2',
-            name: 'DIDO Board',
-            deviceId: 'device_1',
-            createdAt: DateTime.now(),
-            updatedAt: DateTime.now(),
-          ),
-        ],
-        createdAt: DateTime.now(),
-        updatedAt: DateTime.now(),
-      ),
-    ];
-  }
-
   // Update device
-  void updateDevice(Device updatedDevice) {
-    int index = _allDevices.indexWhere((d) => d.id == updatedDevice.id);
-    if (index != -1) {
-      _allDevices[index] = updatedDevice;
-      state = AsyncValue.data(List.from(_allDevices));
+  Future<void> updateDevice(Device updatedDevice) async {
+    try {
+      int index = _allDevices.indexWhere((d) => d.id == updatedDevice.id);
+      if (index != -1) {
+        // Update local list
+        _allDevices[index] = updatedDevice;
+        
+        // Save to Hive
+        await _devicesBox?.put(updatedDevice.id, updatedDevice);
+        
+        // Update state
+        state = AsyncValue.data(List.from(_allDevices));
+        
+        print('Device ${updatedDevice.name} updated in Hive');
+      }
+    } catch (error) {
+      print('Error updating device in Hive: $error');
+      rethrow;
     }
   }
 
   // Delete device
-  void deleteDevice(String deviceId) {
-    _allDevices.removeWhere((d) => d.id == deviceId);
-    state = AsyncValue.data(List.from(_allDevices));
+  Future<void> deleteDevice(String deviceId) async {
+    try {
+      // Remove from local list
+      Device? deviceToRemove = _allDevices.where((d) => d.id == deviceId).firstOrNull;
+      _allDevices.removeWhere((d) => d.id == deviceId);
+      
+      // Remove from Hive
+      await _devicesBox?.delete(deviceId);
+      
+      // Also remove related production records
+      List<String> recordsToRemove = _productionHistory
+          .where((record) => record.deviceId == deviceId)
+          .map((record) => record.id)
+          .toList();
+      
+      for (String recordId in recordsToRemove) {
+        await _productionHistoryBox?.delete(recordId);
+      }
+      
+      // Remove from local production history
+      _productionHistory.removeWhere((record) => record.deviceId == deviceId);
+      
+      // Update state
+      state = AsyncValue.data(List.from(_allDevices));
+      
+      print('Device ${deviceToRemove?.name ?? deviceId} and related records deleted from Hive');
+    } catch (error) {
+      print('Error deleting device from Hive: $error');
+      rethrow;
+    }
   }
 
   // Update PCB BOM
-  void updatePcbBOM(String deviceId, String pcbId, BOM bom) {
-    int deviceIndex = _allDevices.indexWhere((d) => d.id == deviceId);
-    if (deviceIndex != -1) {
-      Device device = _allDevices[deviceIndex];
-      List<PCB> updatedPcbs = device.pcbs.map((pcb) {
-        if (pcb.id == pcbId) {
-          return pcb.copyWith(bom: bom, updatedAt: DateTime.now());
-        }
-        return pcb;
-      }).toList();
+  Future<void> updatePcbBOM(String deviceId, String pcbId, BOM bom) async {
+    try {
+      int deviceIndex = _allDevices.indexWhere((d) => d.id == deviceId);
+      if (deviceIndex != -1) {
+        Device device = _allDevices[deviceIndex];
+        List<PCB> updatedPcbs = device.pcbs.map((pcb) {
+          if (pcb.id == pcbId) {
+            return pcb.copyWith(bom: bom, updatedAt: DateTime.now());
+          }
+          return pcb;
+        }).toList();
 
-      Device updatedDevice = device.copyWith(
-        pcbs: updatedPcbs,
-        updatedAt: DateTime.now(),
-      );
+        Device updatedDevice = device.copyWith(
+          pcbs: updatedPcbs,
+          updatedAt: DateTime.now(),
+        );
 
-      _allDevices[deviceIndex] = updatedDevice;
-      _saveToStorage(); // Save updated device
-      state = AsyncValue.data(List.from(_allDevices));
+        // Update local list
+        _allDevices[deviceIndex] = updatedDevice;
+        
+        // Save to Hive
+        await _devicesBox?.put(deviceId, updatedDevice);
+        
+        // Update state
+        state = AsyncValue.data(List.from(_allDevices));
 
-      // Debug print
-      print('BOM updated for PCB $pcbId in device $deviceId');
-      print(
-        'Device ${updatedDevice.name} ready for production: ${updatedDevice.isReadyForProduction}',
-      );
+        print('BOM updated for PCB $pcbId in device $deviceId and saved to Hive');
+        print('Device ${updatedDevice.name} ready for production: ${updatedDevice.isReadyForProduction}');
+      }
+    } catch (error) {
+      print('Error updating PCB BOM in Hive: $error');
+      rethrow;
     }
   }
 
@@ -188,32 +229,49 @@ class DeviceNotifier extends StateNotifier<AsyncValue<List<Device>>> {
   }
 
   // Record production
-  void recordProduction({
+  Future<void> recordProduction({
     required String deviceId,
     required int quantityProduced,
     required Map<String, int> materialsUsed,
     double? totalCost,
     String? notes,
-  }) {
-    Device? device = _allDevices.where((d) => d.id == deviceId).firstOrNull;
-    if (device == null) return;
+  }) async {
+    try {
+      Device? device = _allDevices.where((d) => d.id == deviceId).firstOrNull;
+      if (device == null) return;
 
-    final productionRecord = ProductionRecord(
-      id: DateTime.now().millisecondsSinceEpoch.toString(),
-      deviceId: deviceId,
-      deviceName: device.name,
-      quantityProduced: quantityProduced,
-      productionDate: DateTime.now(),
-      materialsUsed: materialsUsed,
-      totalCost: totalCost ?? 0.0,
-      notes: notes,
-    );
+      final productionRecord = ProductionRecord(
+        id: DateTime.now().millisecondsSinceEpoch.toString(),
+        deviceId: deviceId,
+        deviceName: device.name,
+        quantityProduced: quantityProduced,
+        productionDate: DateTime.now(),
+        materialsUsed: materialsUsed,
+        totalCost: totalCost ?? 0.0,
+        notes: notes,
+      );
 
-    _productionHistory.insert(0, productionRecord); // Add to beginning
+      // Add to local list (at beginning for most recent first)
+      _productionHistory.insert(0, productionRecord);
 
-    // Keep only last 100 production records
-    if (_productionHistory.length > 100) {
-      _productionHistory = _productionHistory.take(100).toList();
+      // Save to Hive
+      await _productionHistoryBox?.put(productionRecord.id, productionRecord);
+
+      // Keep only last 100 production records in memory and Hive
+      if (_productionHistory.length > 100) {
+        List<ProductionRecord> recordsToRemove = _productionHistory.skip(100).toList();
+        _productionHistory = _productionHistory.take(100).toList();
+        
+        // Remove old records from Hive
+        for (ProductionRecord record in recordsToRemove) {
+          await _productionHistoryBox?.delete(record.id);
+        }
+      }
+      
+      print('Production record for ${device.name} saved to Hive');
+    } catch (error) {
+      print('Error recording production in Hive: $error');
+      rethrow;
     }
   }
 
@@ -267,11 +325,38 @@ class DeviceNotifier extends StateNotifier<AsyncValue<List<Device>>> {
     };
   }
 
-  // Reset all data
-  void resetData() {
-    _allDevices.clear();
-    _productionHistory.clear();
-    state = const AsyncValue.data([]);
+  // Clear all data (for testing/reset)
+  Future<void> resetData() async {
+    try {
+      // Clear local lists
+      _allDevices.clear();
+      _productionHistory.clear();
+      
+      // Clear Hive boxes
+      await _devicesBox?.clear();
+      await _productionHistoryBox?.clear();
+      
+      // Update state
+      state = const AsyncValue.data([]);
+      
+      print('All device data cleared from Hive');
+    } catch (error) {
+      print('Error clearing device data from Hive: $error');
+      rethrow;
+    }
+  }
+
+  // Close Hive boxes when notifier is disposed
+  @override
+  void dispose() {
+    _devicesBox?.close();
+    _productionHistoryBox?.close();
+    super.dispose();
+  }
+
+  // Refresh data from Hive (useful for debugging or data sync)
+  Future<void> refreshFromStorage() async {
+    await _loadDevices();
   }
 }
 
