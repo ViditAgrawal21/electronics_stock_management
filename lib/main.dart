@@ -4,6 +4,7 @@ import 'package:hive_flutter/hive_flutter.dart';
 import 'src/models/materials.dart';
 import 'src/models/pcb.dart';
 import 'src/models/devices.dart'; // Add this import
+import 'src/models/bom.dart'; // Add this import for BOM adapters
 import 'src/screens/login_screen.dart';
 import 'src/theme/app_theme.dart';
 import 'src/constants/app_string.dart';
@@ -17,11 +18,13 @@ void main() async {
 
   // Register Hive adapters
   Hive.registerAdapter(MaterialAdapter());
-  // Add these four lines for device persistence:
+  // Add these lines for device persistence:
   Hive.registerAdapter(SubComponentAdapter());
   Hive.registerAdapter(DeviceAdapter());
   Hive.registerAdapter(ProductionRecordAdapter());
   Hive.registerAdapter(PCBAdapter());
+  Hive.registerAdapter(BOMAdapter());
+  Hive.registerAdapter(BOMItemAdapter());
 
   runApp(const ProviderScope(child: MyApp()));
 }

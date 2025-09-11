@@ -1,12 +1,26 @@
-class BOMItem {
+import 'package:hive/hive.dart';
+
+part 'bom.g.dart';
+
+@HiveType(typeId: 5)
+class BOMItem extends HiveObject {
+  @HiveField(0)
   final String id;
+  @HiveField(1)
   final int serialNumber;
+  @HiveField(2)
   final String reference;
+  @HiveField(3)
   final String value;
+  @HiveField(4)
   final String footprint;
+  @HiveField(5)
   final int quantity;
+  @HiveField(6)
   final String layer; // top/bottom
+  @HiveField(7)
   final String pcbId;
+  @HiveField(8)
   final DateTime createdAt;
 
   BOMItem({
@@ -139,12 +153,19 @@ class BOMItem {
   int get hashCode => id.hashCode;
 }
 
-class BOM {
+@HiveType(typeId: 6)
+class BOM extends HiveObject {
+  @HiveField(0)
   final String id;
+  @HiveField(1)
   final String name;
+  @HiveField(2)
   final String pcbId;
+  @HiveField(3)
   final List<BOMItem> items;
+  @HiveField(4)
   final DateTime createdAt;
+  @HiveField(5)
   final DateTime updatedAt;
 
   BOM({
