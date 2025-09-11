@@ -126,32 +126,9 @@ class _DeviceHistoryScreenState extends ConsumerState<DeviceHistoryScreen>
         return SingleChildScrollView(
           child: Column(
             children: [
-              // Show created devices with detailed breakdown
+              // Enhanced header section with BOM statistics
               if (devices.isNotEmpty) ...[
-                Padding(
-                  padding: const EdgeInsets.all(16),
-                  child: Row(
-                    children: [
-                      Expanded(
-                        child: Text(
-                          'Created Devices (${devices.length})',
-                          style: Theme.of(context).textTheme.titleMedium
-                              ?.copyWith(fontWeight: FontWeight.bold),
-                        ),
-                      ),
-                      IconButton(
-                        icon: const Icon(Icons.picture_as_pdf),
-                        onPressed: () => _generateAllDevicesPDF(devices),
-                        tooltip: 'Export All Devices to PDF',
-                      ),
-                      IconButton(
-                        icon: const Icon(Icons.analytics),
-                        onPressed: () => _generateProductionReportPDF(devices),
-                        tooltip: 'Generate Production Report',
-                      ),
-                    ],
-                  ),
-                ),
+                _buildDevicesSummaryHeader(devices),
                 ...devices
                     .map((device) => _buildEnhancedDeviceCard(device))
                     .toList(),
@@ -195,14 +172,197 @@ class _DeviceHistoryScreenState extends ConsumerState<DeviceHistoryScreen>
     );
   }
 
+  // NEW: Enhanced devices summary header with BOM statistics
+  Widget _buildDevicesSummaryHeader(List<Device> devices) {
+    int totalBomItems = 0;
+    int totalBomQuantity = 0;
+    int devicesWithBOM = 0;
+
+    for (final device in devices) {
+      if (device.isReadyForProduction) {
+        devicesWithBOM++;
+        for (final pcb in device.pcbs) {
+          if (pcb.hasBOM && pcb.bom != null) {
+            totalBomItems += pcb.bom!.items.length;
+            totalBomQuantity += pcb.bom!.totalComponents;
+          }
+        }
+      }
+    }
+
+    return Container(
+      margin: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: [Colors.blue[50]!, Colors.blue[100]!],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.blue[200]!),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  'Device Collection Overview',
+                  style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.blue[800],
+                  ),
+                ),
+              ),
+              Row(
+                children: [
+                  IconButton(
+                    icon: const Icon(Icons.picture_as_pdf, color: Colors.blue),
+                    onPressed: () => _generateAllDevicesPDF(devices),
+                    tooltip: 'Export All Devices Summary',
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.analytics, color: Colors.blue),
+                    onPressed: () => _generateProductionReportPDF(devices),
+                    tooltip: 'Generate Complete Production Report',
+                  ),
+                ],
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+
+          // Statistics grid
+          Row(
+            children: [
+              Expanded(
+                child: _buildSummaryStatCard(
+                  'Total Devices',
+                  devices.length.toString(),
+                  Icons.devices,
+                  Colors.blue,
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: _buildSummaryStatCard(
+                  'Production Ready',
+                  devicesWithBOM.toString(),
+                  Icons.check_circle,
+                  Colors.green,
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: _buildSummaryStatCard(
+                  'BOM Components',
+                  totalBomItems.toString(),
+                  Icons.list_alt,
+                  Colors.purple,
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: _buildSummaryStatCard(
+                  'Total Quantity',
+                  totalBomQuantity.toString(),
+                  Icons.inventory,
+                  Colors.orange,
+                ),
+              ),
+            ],
+          ),
+
+          if (totalBomItems > 0) ...[
+            const SizedBox(height: 12),
+            Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: Colors.blue[700],
+                borderRadius: BorderRadius.circular(6),
+              ),
+              child: Row(
+                children: [
+                  const Icon(Icons.info, color: Colors.white, size: 16),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      'Complete BOM Details: All $totalBomItems components across ${devices.where((d) => d.isReadyForProduction).length} devices available in PDF exports with automatic pagination',
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 11,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSummaryStatCard(
+    String label,
+    String value,
+    IconData icon,
+    Color color,
+  ) {
+    return Container(
+      padding: const EdgeInsets.all(8),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: color.withOpacity(0.3)),
+      ),
+      child: Column(
+        children: [
+          Icon(icon, color: color, size: 16),
+          const SizedBox(height: 4),
+          Text(
+            value,
+            style: TextStyle(
+              fontSize: 14,
+              fontWeight: FontWeight.bold,
+              color: color,
+            ),
+          ),
+          Text(
+            label,
+            style: TextStyle(fontSize: 9, color: color),
+            textAlign: TextAlign.center,
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildEnhancedDeviceCard(Device device) {
+    // Calculate BOM statistics for this device
+    int deviceBomItems = 0;
+    int deviceBomQuantity = 0;
+
+    for (final pcb in device.pcbs) {
+      if (pcb.hasBOM && pcb.bom != null) {
+        deviceBomItems += pcb.bom!.items.length;
+        deviceBomQuantity += pcb.bom!.totalComponents;
+      }
+    }
+
     return Card(
       margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
       elevation: 3,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
       child: Column(
         children: [
-          // Header Section (modified to include delete button)
+          // Enhanced header with BOM indicator
           Container(
             padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(
@@ -230,12 +390,38 @@ class _DeviceHistoryScreenState extends ConsumerState<DeviceHistoryScreen>
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(
-                        device.name,
-                        style: const TextStyle(
-                          fontSize: 18,
-                          fontWeight: FontWeight.bold,
-                        ),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: Text(
+                              device.name,
+                              style: const TextStyle(
+                                fontSize: 18,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ),
+                          // BOM indicator
+                          if (deviceBomItems > 0)
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 6,
+                                vertical: 2,
+                              ),
+                              decoration: BoxDecoration(
+                                color: Colors.blue[600],
+                                borderRadius: BorderRadius.circular(10),
+                              ),
+                              child: Text(
+                                'BOM: $deviceBomItems items',
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 10,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            ),
+                        ],
                       ),
                       if (device.description != null) ...[
                         const SizedBox(height: 4),
@@ -255,16 +441,23 @@ class _DeviceHistoryScreenState extends ConsumerState<DeviceHistoryScreen>
                     ],
                   ),
                 ),
-                // Action buttons
+                // Enhanced action buttons
                 Column(
                   children: [
                     Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
                         IconButton(
-                          icon: const Icon(Icons.picture_as_pdf),
+                          icon: Icon(
+                            Icons.picture_as_pdf,
+                            color: deviceBomItems > 0
+                                ? Colors.blue[700]
+                                : Colors.grey,
+                          ),
                           onPressed: () => _generateSingleDevicePDF(device),
-                          tooltip: 'Export to PDF',
+                          tooltip: deviceBomItems > 0
+                              ? 'Export Complete BOM Details ($deviceBomItems components)'
+                              : 'Export Device Details',
                         ),
                         PopupMenuButton<String>(
                           icon: const Icon(Icons.more_vert),
@@ -285,6 +478,9 @@ class _DeviceHistoryScreenState extends ConsumerState<DeviceHistoryScreen>
                               case 'duplicate':
                                 _duplicateDevice(device);
                                 break;
+                              case 'production':
+                                _showProductionPlanningDialog(device);
+                                break;
                             }
                           },
                           itemBuilder: (context) => [
@@ -294,10 +490,28 @@ class _DeviceHistoryScreenState extends ConsumerState<DeviceHistoryScreen>
                                 children: [
                                   Icon(Icons.edit, size: 18),
                                   SizedBox(width: 8),
-                                  Text('Edit'),
+                                  Text('Edit Device'),
                                 ],
                               ),
                             ),
+                            if (device.isReadyForProduction)
+                              const PopupMenuItem(
+                                value: 'production',
+                                child: Row(
+                                  children: [
+                                    Icon(
+                                      Icons.factory,
+                                      size: 18,
+                                      color: Colors.green,
+                                    ),
+                                    SizedBox(width: 8),
+                                    Text(
+                                      'Production Planning',
+                                      style: TextStyle(color: Colors.green),
+                                    ),
+                                  ],
+                                ),
+                              ),
                             const PopupMenuItem(
                               value: 'duplicate',
                               child: Row(
@@ -329,15 +543,28 @@ class _DeviceHistoryScreenState extends ConsumerState<DeviceHistoryScreen>
                         ),
                       ],
                     ),
-                    Text(
-                      device.isReadyForProduction ? 'Ready' : 'Pending',
-                      style: TextStyle(
-                        fontSize: 12,
-                        color: device.isReadyForProduction
-                            ? Colors.green
-                            : Colors.orange,
-                        fontWeight: FontWeight.w500,
-                      ),
+                    Column(
+                      children: [
+                        Text(
+                          device.isReadyForProduction ? 'Ready' : 'Pending',
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: device.isReadyForProduction
+                                ? Colors.green
+                                : Colors.orange,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                        if (deviceBomQuantity > 0)
+                          Text(
+                            '$deviceBomQuantity pcs',
+                            style: TextStyle(
+                              fontSize: 10,
+                              color: Colors.blue[600],
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                      ],
                     ),
                   ],
                 ),
@@ -345,8 +572,7 @@ class _DeviceHistoryScreenState extends ConsumerState<DeviceHistoryScreen>
             ),
           ),
 
-          // Rest of your existing card content...
-          // Quick Stats
+          // Enhanced quick stats including BOM details
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
             child: Row(
@@ -369,17 +595,25 @@ class _DeviceHistoryScreenState extends ConsumerState<DeviceHistoryScreen>
                 ),
                 Expanded(
                   child: _buildQuickStat(
-                    'Total BOM Items',
-                    device.totalBomItems.toString(),
+                    'BOM Items',
+                    deviceBomItems.toString(),
                     Icons.list_alt,
-                    Colors.green,
+                    deviceBomItems > 0 ? Colors.green : Colors.grey,
+                  ),
+                ),
+                Expanded(
+                  child: _buildQuickStat(
+                    'Total Qty',
+                    deviceBomQuantity.toString(),
+                    Icons.inventory,
+                    deviceBomQuantity > 0 ? Colors.orange : Colors.grey,
                   ),
                 ),
               ],
             ),
           ),
 
-          // Your existing detailed breakdown sections...
+          // Rest of existing sections
           _buildComponentsSection(device),
           _buildPcbSection(device),
         ],
@@ -387,6 +621,149 @@ class _DeviceHistoryScreenState extends ConsumerState<DeviceHistoryScreen>
     );
   }
 
+  // NEW: Production Planning Dialog placeholder
+  void _showProductionPlanningDialog(Device device) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Production Planning'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text('Production planning for "${device.name}" is coming soon!'),
+            const SizedBox(height: 16),
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: Colors.blue[50],
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    'Features being developed:',
+                    style: TextStyle(fontWeight: FontWeight.w600),
+                  ),
+                  const SizedBox(height: 8),
+                  const Text('• Calculate material requirements'),
+                  const Text('• Check stock availability'),
+                  const Text('• Validate production capacity'),
+                  const Text('• Generate production orders'),
+                  const Text('• Track inventory consumption'),
+                ],
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('Close'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // Enhanced PDF generation methods with better feedback
+  Future<void> _generateSingleDevicePDF(Device device) async {
+    // Show loading indicator for large BOMs
+    int totalBomItems = 0;
+    for (final pcb in device.pcbs) {
+      if (pcb.hasBOM && pcb.bom != null) {
+        totalBomItems += pcb.bom!.items.length;
+      }
+    }
+
+    if (totalBomItems > 50) {
+      // Show loading for large BOMs
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (context) => const AlertDialog(
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              CircularProgressIndicator(),
+              SizedBox(height: 16),
+              Text('Generating complete BOM report...'),
+              Text('This may take a moment for large BOMs.'),
+            ],
+          ),
+        ),
+      );
+    }
+
+    bool success = await PDFService.generateSingleDevicePDF(device);
+
+    // Close loading dialog if shown
+    if (totalBomItems > 50 && mounted) {
+      Navigator.of(context).pop();
+    }
+
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            success
+                ? totalBomItems > 0
+                      ? 'Complete BOM report generated for ${device.name} ($totalBomItems components)'
+                      : 'Device report generated for ${device.name}'
+                : 'Failed to generate PDF for ${device.name}',
+          ),
+          backgroundColor: success ? Colors.green : Colors.red,
+          duration: const Duration(seconds: 4),
+        ),
+      );
+    }
+  }
+
+  Future<void> _generateAllDevicesPDF(List<Device> devices) async {
+    bool success = await PDFService.generateMultipleDevicesPDF(devices);
+
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            success
+                ? 'Summary report generated for all ${devices.length} devices'
+                : 'Failed to generate devices summary PDF',
+          ),
+          backgroundColor: success ? Colors.green : Colors.red,
+        ),
+      );
+    }
+  }
+
+  Future<void> _generateProductionReportPDF(List<Device> devices) async {
+    final stats = {
+      'totalDevices': devices.length,
+      'readyDevices': devices.where((d) => d.isReadyForProduction).length,
+      'totalComponents': devices.fold<int>(
+        0,
+        (sum, d) => sum + d.subComponents.length,
+      ),
+      'totalPcbs': devices.fold<int>(0, (sum, d) => sum + d.pcbs.length),
+    };
+
+    bool success = await PDFService.generateProductionReportPDF(devices, stats);
+
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            success
+                ? 'Complete production analysis report generated'
+                : 'Failed to generate production report',
+          ),
+          backgroundColor: success ? Colors.green : Colors.red,
+        ),
+      );
+    }
+  }
+
+  // Keep all existing methods unchanged
   Future<void> _duplicateDevice(Device originalDevice) async {
     try {
       final duplicatedDevice = originalDevice.copyWith(
@@ -457,7 +834,7 @@ class _DeviceHistoryScreenState extends ConsumerState<DeviceHistoryScreen>
                     '• Device and all its data will be permanently deleted\n'
                     '• ${device.pcbs.length} PCB(s) will be removed\n'
                     '• ${device.subComponents.length} component(s) will be removed\n'
-                    '• All production history will be deleted',
+                    '• All BOM data (${device.totalBomItems} items) will be deleted',
                     style: TextStyle(fontSize: 12, color: Colors.red[600]),
                   ),
                 ],
@@ -486,20 +863,16 @@ class _DeviceHistoryScreenState extends ConsumerState<DeviceHistoryScreen>
 
   Future<void> _deleteDevice(Device device) async {
     try {
-      // Show loading indicator
       showDialog(
         context: context,
         barrierDismissible: false,
         builder: (context) => const Center(child: CircularProgressIndicator()),
       );
 
-      // Delete the device
       await ref.read(deviceProvider.notifier).deleteDevice(device.id);
 
-      // Close loading dialog
       if (mounted) Navigator.of(context).pop();
 
-      // Show success message
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -514,10 +887,8 @@ class _DeviceHistoryScreenState extends ConsumerState<DeviceHistoryScreen>
         );
       }
     } catch (error) {
-      // Close loading dialog
       if (mounted) Navigator.of(context).pop();
 
-      // Show error message
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -724,7 +1095,7 @@ class _DeviceHistoryScreenState extends ConsumerState<DeviceHistoryScreen>
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    // PCB Header
+                    // PCB Header with enhanced BOM indicator
                     Row(
                       children: [
                         Container(
@@ -781,7 +1152,7 @@ class _DeviceHistoryScreenState extends ConsumerState<DeviceHistoryScreen>
                           ),
                           child: Text(
                             pcb.hasBOM
-                                ? '${pcb.uniqueComponents} components'
+                                ? '${pcb.uniqueComponents} items'
                                 : 'No BOM',
                             style: const TextStyle(
                               color: Colors.white,
@@ -793,7 +1164,7 @@ class _DeviceHistoryScreenState extends ConsumerState<DeviceHistoryScreen>
                       ],
                     ),
 
-                    // BOM Details
+                    // Enhanced BOM Details with quantity information
                     if (pcb.hasBOM && pcb.bom != null) ...[
                       const SizedBox(height: 12),
                       Container(
@@ -815,7 +1186,7 @@ class _DeviceHistoryScreenState extends ConsumerState<DeviceHistoryScreen>
                                 ),
                                 const SizedBox(width: 4),
                                 Text(
-                                  'BOM Components:',
+                                  'BOM Components (Total: ${pcb.bom!.totalComponents} pieces):',
                                   style: TextStyle(
                                     fontWeight: FontWeight.w600,
                                     fontSize: 12,
@@ -878,7 +1249,7 @@ class _DeviceHistoryScreenState extends ConsumerState<DeviceHistoryScreen>
                             if (pcb.bom!.items.length > 5) ...[
                               const SizedBox(height: 4),
                               Text(
-                                '... and ${pcb.bom!.items.length - 5} more components',
+                                '... and ${pcb.bom!.items.length - 5} more components (complete list in PDF export)',
                                 style: TextStyle(
                                   fontSize: 10,
                                   fontStyle: FontStyle.italic,
@@ -901,68 +1272,7 @@ class _DeviceHistoryScreenState extends ConsumerState<DeviceHistoryScreen>
     );
   }
 
-  // PDF Generation Methods
-  Future<void> _generateSingleDevicePDF(Device device) async {
-    bool success = await PDFService.generateSingleDevicePDF(device);
-
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            success
-                ? 'PDF generated successfully for ${device.name}'
-                : 'Failed to generate PDF for ${device.name}',
-          ),
-          backgroundColor: success ? Colors.green : Colors.red,
-        ),
-      );
-    }
-  }
-
-  Future<void> _generateAllDevicesPDF(List<Device> devices) async {
-    bool success = await PDFService.generateMultipleDevicesPDF(devices);
-
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            success
-                ? 'PDF generated successfully for all ${devices.length} devices'
-                : 'Failed to generate PDF for devices',
-          ),
-          backgroundColor: success ? Colors.green : Colors.red,
-        ),
-      );
-    }
-  }
-
-  Future<void> _generateProductionReportPDF(List<Device> devices) async {
-    final stats = {
-      'totalDevices': devices.length,
-      'readyDevices': devices.where((d) => d.isReadyForProduction).length,
-      'totalComponents': devices.fold<int>(
-        0,
-        (sum, d) => sum + d.subComponents.length,
-      ),
-      'totalPcbs': devices.fold<int>(0, (sum, d) => sum + d.pcbs.length),
-    };
-
-    bool success = await PDFService.generateProductionReportPDF(devices, stats);
-
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            success
-                ? 'Production report generated successfully'
-                : 'Failed to generate production report',
-          ),
-          backgroundColor: success ? Colors.green : Colors.red,
-        ),
-      );
-    }
-  }
-
+  // Keep all other existing methods unchanged (production records, analytics, etc.)
   Widget _buildProductionRecordCard(ProductionRecord record) {
     return Card(
       margin: const EdgeInsets.only(bottom: 12),
@@ -973,7 +1283,6 @@ class _DeviceHistoryScreenState extends ConsumerState<DeviceHistoryScreen>
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Header with device name and date
             Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -1011,7 +1320,6 @@ class _DeviceHistoryScreenState extends ConsumerState<DeviceHistoryScreen>
             ),
             const SizedBox(height: 16),
 
-            // Production summary
             Row(
               children: [
                 Expanded(
@@ -1044,7 +1352,6 @@ class _DeviceHistoryScreenState extends ConsumerState<DeviceHistoryScreen>
             ),
             const SizedBox(height: 16),
 
-            // Materials breakdown
             ExpansionTile(
               title: const Text(
                 'Materials Breakdown',
@@ -1107,7 +1414,6 @@ class _DeviceHistoryScreenState extends ConsumerState<DeviceHistoryScreen>
               ],
             ),
 
-            // Notes if available
             if (record.notes != null && record.notes!.isNotEmpty) ...[
               const SizedBox(height: 12),
               Container(
@@ -1193,7 +1499,6 @@ class _DeviceHistoryScreenState extends ConsumerState<DeviceHistoryScreen>
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Overall statistics
           Text(
             'Production Overview',
             style: Theme.of(
@@ -1255,7 +1560,6 @@ class _DeviceHistoryScreenState extends ConsumerState<DeviceHistoryScreen>
           ),
           const SizedBox(height: 32),
 
-          // Device breakdown
           if (deviceProduction.isNotEmpty) ...[
             Text(
               'Device Breakdown',
