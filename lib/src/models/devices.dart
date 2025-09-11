@@ -3,7 +3,7 @@ import 'pcb.dart';
 
 part 'devices.g.dart'; // Generated file
 
-@HiveType(typeId: 0)
+@HiveType(typeId: 3)
 class SubComponent extends HiveObject {
   @HiveField(0)
   final String id;

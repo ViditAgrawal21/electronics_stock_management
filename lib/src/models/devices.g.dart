@@ -8,7 +8,7 @@ part of 'devices.dart';
 
 class SubComponentAdapter extends TypeAdapter<SubComponent> {
   @override
-  final int typeId = 0;
+  final int typeId = 3;
 
   @override
   SubComponent read(BinaryReader reader) {
