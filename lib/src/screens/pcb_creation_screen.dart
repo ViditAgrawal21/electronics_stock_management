@@ -4,6 +4,7 @@ import '../constants/app_string.dart';
 import '../models/devices.dart';
 import '../models/pcb.dart';
 import '../providers/device_providers.dart';
+import '../providers/materials_providers.dart';
 import '../widgets/custom_button.dart';
 import 'bom_upload_screen.dart';
 
@@ -21,11 +22,14 @@ class _PcbCreationScreenState extends ConsumerState<PcbCreationScreen>
   final _formKey = GlobalKey<FormState>();
   final _deviceNameController = TextEditingController();
   final _descriptionController = TextEditingController();
+  final _quantityController = TextEditingController(text: '1');
 
   List<SubComponent> _subComponents = [];
   List<PCB> _pcbs = [];
   bool _isLoading = false;
   String? _currentDeviceId; // Track current device being created
+  Map<String, int> _materialRequirements = {};
+  Map<String, dynamic> _productionFeasibility = {};
 
   static const _preloadedComponents = [
     'Enclosure',
@@ -104,6 +108,8 @@ class _PcbCreationScreenState extends ConsumerState<PcbCreationScreen>
               _buildComponentsSection(),
               const SizedBox(height: 24),
               _buildPcbSection(),
+              const SizedBox(height: 24),
+              _buildMaterialRequirementsSection(),
               const SizedBox(height: 32),
               _buildCreateButton(),
             ],
@@ -134,6 +140,27 @@ class _PcbCreationScreenState extends ConsumerState<PcbCreationScreen>
           prefixIcon: Icon(Icons.description),
         ),
         maxLines: 3,
+      ),
+      const SizedBox(height: 16),
+      TextFormField(
+        controller: _quantityController,
+        decoration: const InputDecoration(
+          labelText: 'Quantity to Produce *',
+          prefixIcon: Icon(Icons.production_quantity_limits),
+          hintText: 'Enter number of devices to create',
+        ),
+        keyboardType: TextInputType.number,
+        validator: (value) {
+          if (value == null || value.trim().isEmpty) {
+            return 'Please enter quantity';
+          }
+          final quantity = int.tryParse(value.trim());
+          if (quantity == null || quantity <= 0) {
+            return 'Please enter a valid positive number';
+          }
+          return null;
+        },
+        onChanged: (value) => _updateMaterialRequirements(),
       ),
     ]);
   }
@@ -685,8 +712,6 @@ class _PcbCreationScreenState extends ConsumerState<PcbCreationScreen>
     if (!_formKey.currentState!.validate() ||
         _deviceNameController.text.trim().isEmpty ||
         _pcbs.isEmpty) {
-      // Removed _subComponents.isEmpty from here
-
       String errorMessage = 'Please fill all required fields';
       if (_deviceNameController.text.trim().isEmpty) {
         errorMessage = 'Device name is required';
@@ -700,6 +725,24 @@ class _PcbCreationScreenState extends ConsumerState<PcbCreationScreen>
       return;
     }
 
+    final quantity = int.tryParse(_quantityController.text) ?? 1;
+
+    // Check if production is feasible
+    if (_productionFeasibility.isNotEmpty) {
+      final canProduce = _productionFeasibility['canProduce'] ?? true;
+      if (!canProduce) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'Insufficient materials for production. Please check stock levels.',
+            ),
+            backgroundColor: Colors.red,
+          ),
+        );
+        return;
+      }
+    }
+
     setState(() => _isLoading = true);
 
     try {
@@ -707,7 +750,7 @@ class _PcbCreationScreenState extends ConsumerState<PcbCreationScreen>
       final device = Device(
         id: deviceId,
         name: _deviceNameController.text.trim(),
-        subComponents: _subComponents, // This can now be empty
+        subComponents: _subComponents,
         pcbs: _pcbs.map((pcb) => pcb.copyWith(deviceId: deviceId)).toList(),
         createdAt: DateTime.now(),
         updatedAt: DateTime.now(),
@@ -716,12 +759,31 @@ class _PcbCreationScreenState extends ConsumerState<PcbCreationScreen>
             : _descriptionController.text.trim(),
       );
 
+      // Add device
       await ref.read(deviceProvider.notifier).addDevice(device);
+
+      // Record production if quantity > 0
+      if (quantity > 0 && _materialRequirements.isNotEmpty) {
+        await ref
+            .read(deviceProvider.notifier)
+            .recordProduction(
+              deviceId: deviceId,
+              quantityProduced: quantity,
+              materialsUsed: _materialRequirements,
+              notes: 'Device created and produced',
+            );
+
+        // Deduct materials from stock
+        final materialsNotifier = ref.read(materialsProvider.notifier);
+        await materialsNotifier.useMaterials(_materialRequirements);
+      }
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Device created successfully!'),
+          SnackBar(
+            content: Text(
+              'Device created successfully! ${quantity > 0 ? '$quantity units produced.' : ''}',
+            ),
             backgroundColor: Colors.green,
           ),
         );
@@ -795,6 +857,8 @@ class _PcbCreationScreenState extends ConsumerState<PcbCreationScreen>
               const Text('2. Add or modify components (optional)'),
               const Text('3. Add, edit, or remove PCB boards (required)'),
               const Text('4. Upload or update BOMs for each PCB'),
+              const Text('5. Enter quantity to produce'),
+              const Text('6. Review material requirements and stock status'),
               const SizedBox(height: 12),
               const Text(
                 'Components (Optional):',
@@ -813,6 +877,15 @@ class _PcbCreationScreenState extends ConsumerState<PcbCreationScreen>
               const Text('• Enclosure, Display, SMPS, Manifold'),
               const Text('• DP Sensor, Restkit, Regulator, Filter'),
               const Text('• Calport, Nut'),
+              const SizedBox(height: 12),
+              const Text(
+                'Material Requirements:',
+                style: TextStyle(fontWeight: FontWeight.bold),
+              ),
+              const SizedBox(height: 4),
+              const Text('• Review required materials for your quantity'),
+              const Text('• Check stock availability and shortages'),
+              const Text('• Fill up stock if insufficient materials'),
               const SizedBox(height: 12),
               Container(
                 padding: const EdgeInsets.all(8),
@@ -833,6 +906,7 @@ class _PcbCreationScreenState extends ConsumerState<PcbCreationScreen>
                     Text('• At least one PCB board is required'),
                     Text('• Components are optional'),
                     Text('• BOMs can be uploaded after creating the device'),
+                    Text('• Quantity must be a positive number'),
                   ],
                 ),
               ),
@@ -844,5 +918,198 @@ class _PcbCreationScreenState extends ConsumerState<PcbCreationScreen>
         ],
       ),
     );
+  }
+
+  // Update material requirements when quantity changes
+  void _updateMaterialRequirements() {
+    final quantity = int.tryParse(_quantityController.text) ?? 1;
+    if (quantity <= 0) return;
+
+    // Create temporary device for calculation
+    final tempDevice = Device(
+      id: _currentDeviceId ?? 'temp',
+      name: _deviceNameController.text.isNotEmpty
+          ? _deviceNameController.text
+          : 'Temp Device',
+      subComponents: _subComponents,
+      pcbs: _pcbs,
+      createdAt: DateTime.now(),
+      updatedAt: DateTime.now(),
+    );
+
+    // Calculate material requirements
+    final deviceNotifier = ref.read(deviceProvider.notifier);
+    _materialRequirements = deviceNotifier.calculateBatchMaterialRequirements(
+      tempDevice.id,
+      quantity,
+    );
+
+    // Check production feasibility
+    final materialsAsync = ref.watch(materialsProvider);
+    materialsAsync.whenData((materials) {
+      _productionFeasibility = deviceNotifier.checkProductionFeasibility(
+        tempDevice.id,
+        quantity,
+        materials,
+      );
+    });
+
+    setState(() {});
+  }
+
+  // Build material requirements section
+  Widget _buildMaterialRequirementsSection() {
+    if (_materialRequirements.isEmpty) {
+      return const SizedBox.shrink();
+    }
+
+    final quantity = int.tryParse(_quantityController.text) ?? 1;
+    final canProduce = _productionFeasibility['canProduce'] ?? true;
+    final shortages =
+        _productionFeasibility['shortages'] as Map<String, int>? ?? {};
+    final available =
+        _productionFeasibility['available'] as Map<String, int>? ?? {};
+
+    return _buildCard('Material Requirements (${quantity}x)', Icons.inventory, [
+      // Summary
+      Container(
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: canProduce ? const Color(0xFFE8F5E8) : const Color(0xFFFFEBEE),
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(
+            color: canProduce
+                ? const Color(0xFF4CAF50)
+                : const Color(0xFFF44336),
+          ),
+        ),
+        child: Row(
+          children: [
+            Icon(
+              canProduce ? Icons.check_circle : Icons.warning,
+              color: canProduce
+                  ? const Color(0xFF4CAF50)
+                  : const Color(0xFFF44336),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Text(
+                canProduce
+                    ? 'All materials available for production'
+                    : 'Some materials are insufficient',
+                style: TextStyle(
+                  fontWeight: FontWeight.w600,
+                  color: canProduce
+                      ? const Color(0xFF2E7D32)
+                      : const Color(0xFFC62828),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+      const SizedBox(height: 16),
+
+      // Material list
+      ..._materialRequirements.entries.map((entry) {
+        final materialName = entry.key;
+        final requiredQty = entry.value;
+        final availableQty = available[materialName] ?? 0;
+        final shortageQty = shortages[materialName] ?? 0;
+        final isShort = shortageQty > 0;
+
+        return Container(
+          margin: const EdgeInsets.only(bottom: 8),
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            color: isShort ? const Color(0xFFFFEBEE) : const Color(0xFFFAFAFA),
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(
+              color: isShort
+                  ? const Color(0xFFF44336)
+                  : const Color(0xFFBDBDBD),
+            ),
+          ),
+          child: Row(
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      materialName,
+                      style: const TextStyle(fontWeight: FontWeight.w600),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      'Required: $requiredQty | Available: $availableQty',
+                      style: const TextStyle(
+                        fontSize: 12,
+                        color: Color(0xFF757575),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              if (isShort)
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 8,
+                    vertical: 4,
+                  ),
+                  decoration: const BoxDecoration(
+                    color: Color(0xFFFFCDD2),
+                    borderRadius: BorderRadius.all(Radius.circular(12)),
+                  ),
+                  child: Text(
+                    'Short: $shortageQty',
+                    style: const TextStyle(
+                      color: Color(0xFFC62828),
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+            ],
+          ),
+        );
+      }).toList(),
+
+      // Max producible quantity if there are shortages
+      if (!canProduce && shortages.isNotEmpty) ...[
+        const SizedBox(height: 16),
+        Container(
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            color: const Color(0xFFFFF3E0),
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(color: const Color(0xFFFF9800)),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Icon(Icons.info, color: const Color(0xFFFF9800)),
+                  const SizedBox(width: 8),
+                  const Text(
+                    'Stock Alert',
+                    style: TextStyle(
+                      fontWeight: FontWeight.w600,
+                      color: const Color(0xFFEF6C00),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 8),
+              Text(
+                'Insufficient stock for $quantity devices. Please fill up stock or reduce quantity.',
+                style: TextStyle(color: const Color(0xFFF57C00)),
+              ),
+            ],
+          ),
+        ),
+      ],
+    ]);
   }
 }
