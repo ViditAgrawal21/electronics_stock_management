@@ -17,7 +17,7 @@ class DeviceNotifier extends StateNotifier<AsyncValue<List<Device>>> {
 
   List<Device> _allDevices = [];
   List<ProductionRecord> _productionHistory = [];
-  
+
   // Hive boxes
   Box<Device>? _devicesBox;
   Box<ProductionRecord>? _productionHistoryBox;
@@ -27,17 +27,23 @@ class DeviceNotifier extends StateNotifier<AsyncValue<List<Device>>> {
     try {
       // Open Hive boxes
       _devicesBox = await Hive.openBox<Device>(_devicesBoxKey);
-      _productionHistoryBox = await Hive.openBox<ProductionRecord>(_productionHistoryBoxKey);
+      _productionHistoryBox = await Hive.openBox<ProductionRecord>(
+        _productionHistoryBoxKey,
+      );
 
       // Load devices from Hive
       _allDevices = _devicesBox?.values.toList() ?? [];
       _productionHistory = _productionHistoryBox?.values.toList() ?? [];
 
       // Sort production history by date (most recent first)
-      _productionHistory.sort((a, b) => b.productionDate.compareTo(a.productionDate));
+      _productionHistory.sort(
+        (a, b) => b.productionDate.compareTo(a.productionDate),
+      );
 
       print('Loaded ${_allDevices.length} devices from Hive storage');
-      print('Loaded ${_productionHistory.length} production records from Hive storage');
+      print(
+        'Loaded ${_productionHistory.length} production records from Hive storage',
+      );
 
       state = AsyncValue.data(_allDevices);
     } catch (error, stackTrace) {
@@ -51,13 +57,18 @@ class DeviceNotifier extends StateNotifier<AsyncValue<List<Device>>> {
     try {
       // Add to local list
       _allDevices.add(device);
-      
+
+      // Ensure Hive box is open
+      if (_devicesBox == null || !_devicesBox!.isOpen) {
+        _devicesBox = await Hive.openBox<Device>(_devicesBoxKey);
+      }
+
       // Save to Hive
       await _devicesBox?.put(device.id, device);
-      
+
       // Update state
       state = AsyncValue.data(List.from(_allDevices));
-      
+
       print('Device ${device.name} added and saved to Hive');
     } catch (error) {
       print('Error adding device to Hive: $error');
@@ -74,13 +85,13 @@ class DeviceNotifier extends StateNotifier<AsyncValue<List<Device>>> {
       if (index != -1) {
         // Update local list
         _allDevices[index] = updatedDevice;
-        
+
         // Save to Hive
         await _devicesBox?.put(updatedDevice.id, updatedDevice);
-        
+
         // Update state
         state = AsyncValue.data(List.from(_allDevices));
-        
+
         print('Device ${updatedDevice.name} updated in Hive');
       }
     } catch (error) {
@@ -93,29 +104,33 @@ class DeviceNotifier extends StateNotifier<AsyncValue<List<Device>>> {
   Future<void> deleteDevice(String deviceId) async {
     try {
       // Remove from local list
-      Device? deviceToRemove = _allDevices.where((d) => d.id == deviceId).firstOrNull;
+      Device? deviceToRemove = _allDevices
+          .where((d) => d.id == deviceId)
+          .firstOrNull;
       _allDevices.removeWhere((d) => d.id == deviceId);
-      
+
       // Remove from Hive
       await _devicesBox?.delete(deviceId);
-      
+
       // Also remove related production records
       List<String> recordsToRemove = _productionHistory
           .where((record) => record.deviceId == deviceId)
           .map((record) => record.id)
           .toList();
-      
+
       for (String recordId in recordsToRemove) {
         await _productionHistoryBox?.delete(recordId);
       }
-      
+
       // Remove from local production history
       _productionHistory.removeWhere((record) => record.deviceId == deviceId);
-      
+
       // Update state
       state = AsyncValue.data(List.from(_allDevices));
-      
-      print('Device ${deviceToRemove?.name ?? deviceId} and related records deleted from Hive');
+
+      print(
+        'Device ${deviceToRemove?.name ?? deviceId} and related records deleted from Hive',
+      );
     } catch (error) {
       print('Error deleting device from Hive: $error');
       rethrow;
@@ -142,15 +157,19 @@ class DeviceNotifier extends StateNotifier<AsyncValue<List<Device>>> {
 
         // Update local list
         _allDevices[deviceIndex] = updatedDevice;
-        
+
         // Save to Hive
         await _devicesBox?.put(deviceId, updatedDevice);
-        
+
         // Update state
         state = AsyncValue.data(List.from(_allDevices));
 
-        print('BOM updated for PCB $pcbId in device $deviceId and saved to Hive');
-        print('Device ${updatedDevice.name} ready for production: ${updatedDevice.isReadyForProduction}');
+        print(
+          'BOM updated for PCB $pcbId in device $deviceId and saved to Hive',
+        );
+        print(
+          'Device ${updatedDevice.name} ready for production: ${updatedDevice.isReadyForProduction}',
+        );
       }
     } catch (error) {
       print('Error updating PCB BOM in Hive: $error');
@@ -259,15 +278,17 @@ class DeviceNotifier extends StateNotifier<AsyncValue<List<Device>>> {
 
       // Keep only last 100 production records in memory and Hive
       if (_productionHistory.length > 100) {
-        List<ProductionRecord> recordsToRemove = _productionHistory.skip(100).toList();
+        List<ProductionRecord> recordsToRemove = _productionHistory
+            .skip(100)
+            .toList();
         _productionHistory = _productionHistory.take(100).toList();
-        
+
         // Remove old records from Hive
         for (ProductionRecord record in recordsToRemove) {
           await _productionHistoryBox?.delete(record.id);
         }
       }
-      
+
       print('Production record for ${device.name} saved to Hive');
     } catch (error) {
       print('Error recording production in Hive: $error');
@@ -331,14 +352,14 @@ class DeviceNotifier extends StateNotifier<AsyncValue<List<Device>>> {
       // Clear local lists
       _allDevices.clear();
       _productionHistory.clear();
-      
+
       // Clear Hive boxes
       await _devicesBox?.clear();
       await _productionHistoryBox?.clear();
-      
+
       // Update state
       state = const AsyncValue.data([]);
-      
+
       print('All device data cleared from Hive');
     } catch (error) {
       print('Error clearing device data from Hive: $error');

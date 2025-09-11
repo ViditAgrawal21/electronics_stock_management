@@ -1,5 +1,9 @@
+import 'package:hive/hive.dart';
 import 'bom.dart';
 
+part 'pcb.g.dart';
+
+@HiveType(typeId: 4)
 class PCB {
   final String id;
   final String name;
