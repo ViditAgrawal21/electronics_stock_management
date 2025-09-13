@@ -820,8 +820,9 @@ class _PcbCreationScreenState extends ConsumerState<PcbCreationScreen>
               text: 'Upload BOM',
               onPressed: () {
                 Navigator.pop(context);
-                if (device.pcbs.isNotEmpty)
+                if (device.pcbs.isNotEmpty) {
                   _navigateToBomUpload(device.pcbs.first, 0);
+                }
               },
             ),
           CustomButton(
@@ -1073,7 +1074,7 @@ class _PcbCreationScreenState extends ConsumerState<PcbCreationScreen>
             ],
           ),
         );
-      }).toList(),
+      }),
 
       // Max producible quantity if there are shortages
       if (!canProduce && shortages.isNotEmpty) ...[
@@ -1096,7 +1097,7 @@ class _PcbCreationScreenState extends ConsumerState<PcbCreationScreen>
                     'Stock Alert',
                     style: TextStyle(
                       fontWeight: FontWeight.w600,
-                      color: const Color(0xFFEF6C00),
+                      color: Color(0xFFEF6C00),
                     ),
                   ),
                 ],

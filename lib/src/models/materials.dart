@@ -100,12 +100,12 @@ class Material extends HiveObject {
       remainingQuantity: remainingQty,
       usedQuantity: usedQty,
       description: rowValues.length > 4
-          ? rowValues[4]?.toString()?.trim()
+          ? rowValues[4]?.toString().trim()
           : null,
-      category: rowValues.length > 5 ? rowValues[5]?.toString()?.trim() : null,
+      category: rowValues.length > 5 ? rowValues[5]?.toString().trim() : null,
       unitCost: rowValues.length > 6 ? _parseDouble(rowValues[6]) : null,
-      supplier: rowValues.length > 7 ? rowValues[7]?.toString()?.trim() : null,
-      location: rowValues.length > 8 ? rowValues[8]?.toString()?.trim() : null,
+      supplier: rowValues.length > 7 ? rowValues[7]?.toString().trim() : null,
+      location: rowValues.length > 8 ? rowValues[8]?.toString().trim() : null,
       createdAt: DateTime.now(),
       lastUsedAt: DateTime.now(),
     );
@@ -151,12 +151,12 @@ class Material extends HiveObject {
       remainingQuantity: remainingQty,
       usedQuantity: initialQty - remainingQty,
       description: rowValues.length > 3
-          ? rowValues[3]?.toString()?.trim()
+          ? rowValues[3]?.toString().trim()
           : null,
-      category: rowValues.length > 4 ? rowValues[4]?.toString()?.trim() : null,
+      category: rowValues.length > 4 ? rowValues[4]?.toString().trim() : null,
       unitCost: rowValues.length > 5 ? _parseDouble(rowValues[5]) : null,
-      supplier: rowValues.length > 6 ? rowValues[6]?.toString()?.trim() : null,
-      location: rowValues.length > 7 ? rowValues[7]?.toString()?.trim() : null,
+      supplier: rowValues.length > 6 ? rowValues[6]?.toString().trim() : null,
+      location: rowValues.length > 7 ? rowValues[7]?.toString().trim() : null,
       createdAt: DateTime.now(),
       lastUsedAt: DateTime.now(),
     );

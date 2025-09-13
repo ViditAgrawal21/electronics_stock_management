@@ -368,7 +368,7 @@ class _BomUploadScreenState extends ConsumerState<BomUploadScreen>
     }
 
     return DropdownButtonFormField<String>(
-      value: _selectedPcbId,
+      initialValue: _selectedPcbId,
       decoration: const InputDecoration(
         labelText: 'Select PCB Board',
         prefixIcon: Icon(Icons.developer_board),

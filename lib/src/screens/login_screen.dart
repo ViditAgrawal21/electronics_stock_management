@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../constants/app_string.dart';
-import '../constants/app_config.dart';
 import '../widgets/custom_button.dart';
 import '../services/login_services.dart';
 import 'home_screen.dart';

@@ -91,7 +91,7 @@ class BOMItem extends HiveObject {
 
     // Handle serial number
     int serialNumber = 0;
-    if (row.length > 0 && row[0] != null) {
+    if (row.isNotEmpty && row[0] != null) {
       serialNumber = int.tryParse(row[0].toString()) ?? 0;
     }
 

@@ -37,7 +37,7 @@ class BomTable extends StatelessWidget {
         ),
         child: DataTable(
           columnSpacing: 16,
-          headingRowColor: MaterialStateProperty.all(Colors.grey[100]),
+          headingRowColor: WidgetStateProperty.all(Colors.grey[100]),
           columns: const [
             DataColumn(
               label: Text(
@@ -257,7 +257,7 @@ class BomTable extends StatelessWidget {
                 ),
                 const SizedBox(height: 12),
                 DropdownButtonFormField<String>(
-                  value: selectedLayer,
+                  initialValue: selectedLayer,
                   decoration: const InputDecoration(labelText: 'Layer'),
                   items: const [
                     DropdownMenuItem(value: 'top', child: Text('Top')),

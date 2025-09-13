@@ -5,7 +5,7 @@ import '../models/materials.dart' as material_model;
 import '../widgets/notifier.dart';
 
 class AlertsScreen extends ConsumerStatefulWidget {
-  const AlertsScreen({Key? key}) : super(key: key);
+  const AlertsScreen({super.key});
 
   @override
   ConsumerState<AlertsScreen> createState() => _AlertsScreenState();
@@ -461,11 +461,9 @@ class _AlertsScreenState extends ConsumerState<AlertsScreen> {
   void _markAlertAsRead(String alertId) {
     setState(() {
       final alert = _localAlerts.firstWhere((a) => a['id'] == alertId);
-      if (alert != null) {
-        alert['isRead'] = true;
-        _showSnackBar('Alert marked as read', Colors.green);
-      }
-    });
+      alert['isRead'] = true;
+      _showSnackBar('Alert marked as read', Colors.green);
+        });
   }
 
   void _deleteAlert(String alertId) {

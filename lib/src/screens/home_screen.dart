@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../constants/app_string.dart';
 import '../providers/materials_providers.dart';
-import '../providers/alert_provider.dart';
+import '../providers/device_providers.dart';
 import '../widgets/stock_summary.dart';
 import '../services/login_services.dart';
 import 'materials_list_screen.dart';
@@ -70,9 +70,21 @@ class HomeScreen extends ConsumerWidget {
             onSelected: (value) {
               if (value == 'logout') {
                 _handleLogout(context);
+              } else if (value == 'reset') {
+                _handleReset(context, ref);
               }
             },
             itemBuilder: (context) => [
+              const PopupMenuItem(
+                value: 'reset',
+                child: Row(
+                  children: [
+                    Icon(Icons.refresh),
+                    SizedBox(width: 8),
+                    Text('Reset App Data'),
+                  ],
+                ),
+              ),
               const PopupMenuItem(
                 value: 'logout',
                 child: Row(
@@ -412,6 +424,54 @@ class HomeScreen extends ConsumerWidget {
               );
             },
             child: const Text('Logout'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _handleReset(BuildContext context, WidgetRef ref) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Reset App Data'),
+        content: const Text(
+          'This will permanently delete all materials, devices, and production history. This action cannot be undone. Are you sure?',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () async {
+              Navigator.of(context).pop();
+
+              // Reset all data
+              try {
+                final materialsNotifier = ref.read(materialsProvider.notifier);
+                final deviceNotifier = ref.read(deviceProvider.notifier);
+
+                await materialsNotifier.resetData();
+                await deviceNotifier.resetData();
+
+                // Show success message
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('All app data has been reset'),
+                    backgroundColor: Colors.green,
+                  ),
+                );
+              } catch (e) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text('Error resetting data: $e'),
+                    backgroundColor: Colors.red,
+                  ),
+                );
+              }
+            },
+            child: const Text('Reset', style: TextStyle(color: Colors.red)),
           ),
         ],
       ),

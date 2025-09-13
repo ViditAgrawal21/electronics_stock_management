@@ -131,7 +131,7 @@ class _DeviceHistoryScreenState extends ConsumerState<DeviceHistoryScreen>
                 _buildDevicesSummaryHeader(devices),
                 ...devices
                     .map((device) => _buildEnhancedDeviceCard(device))
-                    .toList(),
+                    ,
               ],
 
               // Show production history
@@ -147,7 +147,7 @@ class _DeviceHistoryScreenState extends ConsumerState<DeviceHistoryScreen>
                 ),
                 ...history
                     .map((record) => _buildProductionRecordCard(record))
-                    .toList(),
+                    ,
               ],
             ],
           ),
@@ -1245,7 +1245,7 @@ class _DeviceHistoryScreenState extends ConsumerState<DeviceHistoryScreen>
                                   ],
                                 ),
                               );
-                            }).toList(),
+                            }),
                             if (pcb.bom!.items.length > 5) ...[
                               const SizedBox(height: 4),
                               Text(

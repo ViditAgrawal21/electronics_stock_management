@@ -1,6 +1,4 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import '../models/bom.dart';
-import '../models/devices.dart';
 
 final bomStatusProvider =
     StateNotifierProvider<BomStatusNotifier, Map<String, bool>>((ref) {

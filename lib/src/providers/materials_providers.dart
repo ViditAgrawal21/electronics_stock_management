@@ -27,7 +27,7 @@ class MaterialsNotifier extends StateNotifier<AsyncValue<List<Material>>> {
     try {
       // Load from Hive storage
       await loadMaterialsFromLocal();
-    } catch (error, stackTrace) {
+    } catch (error) {
       print('Error loading materials: $error');
       // If loading fails, start with empty list
       _allMaterials = [];

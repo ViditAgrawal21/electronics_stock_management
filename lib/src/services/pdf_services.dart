@@ -303,7 +303,7 @@ class PDFService {
               style: const pw.TextStyle(fontSize: 11),
             ),
             pw.Text(
-              'Items ${startingItemNumber}-${startingItemNumber + sectionItems.length - 1}',
+              'Items $startingItemNumber-${startingItemNumber + sectionItems.length - 1}',
               style: const pw.TextStyle(fontSize: 9, color: PdfColors.grey600),
             ),
           ],

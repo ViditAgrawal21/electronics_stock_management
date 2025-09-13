@@ -1,7 +1,13 @@
 import 'dart:io';
 import 'package:excel/excel.dart';
 import 'package:file_picker/file_picker.dart';
-import 'package:path_provider/path_provider.dart';
+import 'package:path_provider/path_provider.dart'
+    show
+        getApplicationDocumentsDirectory,
+        getExternalStorageDirectories,
+        getExternalStorageDirectory,
+        StorageDirectory;
+import 'package:flutter/foundation.dart' show kIsWeb;
 import '../models/materials.dart';
 import '../models/bom.dart';
 import '../constants/app_config.dart';
@@ -35,32 +41,20 @@ class ExcelService {
             List<Data?> row = sheet.row(rowIndex);
             if (_isEmptyRow(row)) continue;
 
-            // PRESERVE RAW MATERIAL NAME EXACTLY AS IN EXCEL
-            String rawMaterialName = _getRawMaterialName(
-              row,
-              0,
-            ); // First column
+            // Get exact cell values as strings to preserve Excel format
+            List<dynamic> rowValues = row
+                .map((cell) => cell?.value?.toString() ?? '')
+                .toList();
 
-            if (rawMaterialName.isEmpty) {
-              print('Skipping row $rowIndex: Empty raw material name');
+            // Check if first column (material name) is empty
+            if (rowValues.isEmpty || rowValues[0].trim().isEmpty) {
+              print('Skipping row $rowIndex: Empty material name');
               continue;
-            }
-
-            // Convert row to values but preserve the raw material name
-            List<dynamic> rowValues = [];
-            for (int cellIndex = 0; cellIndex < row.length; cellIndex++) {
-              if (cellIndex == 0) {
-                // Use preserved raw material name for first column
-                rowValues.add(rawMaterialName);
-              } else {
-                // Use normal conversion for other columns
-                rowValues.add(ExcelUtils.convertCellValue(row[cellIndex]));
-              }
             }
 
             // Generate unique ID for material
             String materialId =
-                DateTime.now().millisecondsSinceEpoch.toString() + '_$rowIndex';
+                '${DateTime.now().millisecondsSinceEpoch}_$rowIndex';
 
             try {
               Material material = Material.fromExcelRow(
@@ -74,7 +68,6 @@ class ExcelService {
               }
             } catch (e) {
               print('Error processing row $rowIndex: $e');
-              print('Raw material name: "$rawMaterialName"');
               print('Row values: $rowValues');
               continue;
             }
@@ -95,6 +88,11 @@ class ExcelService {
   // Export materials to Excel file
   static Future<bool> exportMaterials(List<Material> materials) async {
     try {
+      if (kIsWeb) {
+        print('Export not supported on web platform');
+        return false;
+      }
+
       Excel excel = Excel.createExcel();
       Sheet sheet = excel['Materials'];
 
@@ -146,7 +144,27 @@ class ExcelService {
       }
 
       // Save file
-      Directory? directory = await getExternalStorageDirectory();
+      Directory? directory;
+      if (Platform.isAndroid) {
+        try {
+          List<Directory>? directories = await getExternalStorageDirectories(
+            type: StorageDirectory.downloads,
+          );
+          if (directories != null && directories.isNotEmpty) {
+            directory = directories.first;
+          } else {
+            directory = await getApplicationDocumentsDirectory();
+          }
+        } catch (e) {
+          print(
+            'getExternalStorageDirectories failed: $e, falling back to getApplicationDocumentsDirectory',
+          );
+          directory = await getApplicationDocumentsDirectory();
+        }
+      } else {
+        directory = await getApplicationDocumentsDirectory();
+      }
+
       String fileName =
           'materials_export_${DateTime.now().millisecondsSinceEpoch}.xlsx';
       String filePath = '${directory!.path}/$fileName';
@@ -194,7 +212,7 @@ class ExcelService {
 
             // Generate unique ID for BOM item
             String bomItemId =
-                DateTime.now().millisecondsSinceEpoch.toString() + '_$rowIndex';
+                '${DateTime.now().millisecondsSinceEpoch}_$rowIndex';
 
             try {
               BOMItem bomItem = BOMItem.fromExcelRow(
@@ -285,7 +303,26 @@ class ExcelService {
       }
 
       // Save file
-      Directory? directory = await getExternalStorageDirectory();
+      Directory? directory;
+      if (Platform.isAndroid) {
+        try {
+          List<Directory>? directories = await getExternalStorageDirectories(
+            type: StorageDirectory.downloads,
+          );
+          if (directories != null && directories.isNotEmpty) {
+            directory = directories.first;
+          } else {
+            directory = await getApplicationDocumentsDirectory();
+          }
+        } catch (e) {
+          print(
+            'getExternalStorageDirectories failed: $e, falling back to getApplicationDocumentsDirectory',
+          );
+          directory = await getApplicationDocumentsDirectory();
+        }
+      } else {
+        directory = await getApplicationDocumentsDirectory();
+      }
       String fullFileName =
           '${fileName}_bom_${DateTime.now().millisecondsSinceEpoch}.xlsx';
       String filePath = '${directory!.path}/$fullFileName';
@@ -356,7 +393,26 @@ class ExcelService {
       }
 
       // Save template file
-      Directory? directory = await getExternalStorageDirectory();
+      Directory? directory;
+      if (Platform.isAndroid) {
+        try {
+          List<Directory>? directories = await getExternalStorageDirectories(
+            type: StorageDirectory.downloads,
+          );
+          if (directories != null && directories.isNotEmpty) {
+            directory = directories.first;
+          } else {
+            directory = await getApplicationDocumentsDirectory();
+          }
+        } catch (e) {
+          print(
+            'getExternalStorageDirectories failed: $e, falling back to getApplicationDocumentsDirectory',
+          );
+          directory = await getApplicationDocumentsDirectory();
+        }
+      } else {
+        directory = await getApplicationDocumentsDirectory();
+      }
       String fileName = 'BOM_Template.xlsx';
       String filePath = '${directory!.path}/$fileName';
 
@@ -412,11 +468,7 @@ class ExcelService {
     // Add text from children if available
     if (textSpan.children != null) {
       for (var child in textSpan.children!) {
-        if (child is TextSpan) {
-          buffer.write(_extractTextFromTextSpan(child));
-        } else {
-          buffer.write(child.toString());
-        }
+        buffer.write(_extractTextFromTextSpan(child));
       }
     }
 
