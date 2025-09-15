@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../providers/materials_providers.dart';
 import '../models/materials.dart' as material_model;
-import '../widgets/notifier.dart';
+// import '../widgets/notifier.dart';
 
 class AlertsScreen extends ConsumerStatefulWidget {
   const AlertsScreen({super.key});
@@ -463,7 +463,7 @@ class _AlertsScreenState extends ConsumerState<AlertsScreen> {
       final alert = _localAlerts.firstWhere((a) => a['id'] == alertId);
       alert['isRead'] = true;
       _showSnackBar('Alert marked as read', Colors.green);
-        });
+    });
   }
 
   void _deleteAlert(String alertId) {

@@ -3,7 +3,7 @@ import 'package:hive_flutter/hive_flutter.dart';
 import 'package:electronics_stock_management/src/models/materials.dart';
 import '../services/excel_service.dart';
 import '../utils/search_trie.dart';
-import '../constants/app_config.dart';
+// import '../constants/app_config.dart';
 
 // Hive box name constant
 const String _materialsBoxName = 'materials_box';
@@ -78,7 +78,7 @@ class MaterialsNotifier extends StateNotifier<AsyncValue<List<Material>>> {
       _allMaterials.add(material);
       _searchTrie.insert(material.name, material.id);
       state = AsyncValue.data(List.from(_allMaterials));
-      
+
       // Save to Hive immediately
       final box = await _getMaterialsBox();
       await box.put(material.id, material);
@@ -105,7 +105,7 @@ class MaterialsNotifier extends StateNotifier<AsyncValue<List<Material>>> {
         }
 
         state = AsyncValue.data(List.from(_allMaterials));
-        
+
         // Update in Hive immediately
         final box = await _getMaterialsBox();
         await box.put(updatedMaterial.id, updatedMaterial);
@@ -116,7 +116,10 @@ class MaterialsNotifier extends StateNotifier<AsyncValue<List<Material>>> {
   }
 
   // Update remaining quantity only
-  Future<void> updateRemainingQuantity(String materialId, int newQuantity) async {
+  Future<void> updateRemainingQuantity(
+    String materialId,
+    int newQuantity,
+  ) async {
     try {
       int index = _allMaterials.indexWhere((m) => m.id == materialId);
       if (index != -1) {
@@ -126,7 +129,7 @@ class MaterialsNotifier extends StateNotifier<AsyncValue<List<Material>>> {
           lastUsedAt: DateTime.now(),
         );
         state = AsyncValue.data(List.from(_allMaterials));
-        
+
         // Update in Hive immediately
         final box = await _getMaterialsBox();
         await box.put(materialId, _allMaterials[index]);
@@ -140,27 +143,30 @@ class MaterialsNotifier extends StateNotifier<AsyncValue<List<Material>>> {
   Future<void> useMaterials(Map<String, int> materialsToUse) async {
     try {
       final box = await _getMaterialsBox();
-      
+
       for (String materialId in materialsToUse.keys) {
         int quantityToUse = materialsToUse[materialId] ?? 0;
         int index = _allMaterials.indexWhere((m) => m.id == materialId);
 
         if (index != -1) {
           Material material = _allMaterials[index];
-          int newRemainingQuantity = (material.remainingQuantity - quantityToUse)
-              .clamp(0, material.initialQuantity);
+          int newRemainingQuantity =
+              (material.remainingQuantity - quantityToUse).clamp(
+                0,
+                material.initialQuantity,
+              );
 
           _allMaterials[index] = material.copyWith(
             remainingQuantity: newRemainingQuantity,
             usedQuantity: material.initialQuantity - newRemainingQuantity,
             lastUsedAt: DateTime.now(),
           );
-          
+
           // Update in Hive
           await box.put(materialId, _allMaterials[index]);
         }
       }
-      
+
       state = AsyncValue.data(List.from(_allMaterials));
     } catch (e) {
       print('Error using materials: $e');
@@ -177,7 +183,7 @@ class MaterialsNotifier extends StateNotifier<AsyncValue<List<Material>>> {
         _allMaterials.removeWhere((m) => m.id == materialId);
         _searchTrie.remove(materialToDelete.name, materialId);
         state = AsyncValue.data(List.from(_allMaterials));
-        
+
         // Delete from Hive
         final box = await _getMaterialsBox();
         await box.delete(materialId);
@@ -335,7 +341,7 @@ class MaterialsNotifier extends StateNotifier<AsyncValue<List<Material>>> {
       _allMaterials.clear();
       _searchTrie.clear();
       state = const AsyncValue.data([]);
-      
+
       // Clear Hive storage
       final box = await _getMaterialsBox();
       await box.clear();
@@ -348,15 +354,15 @@ class MaterialsNotifier extends StateNotifier<AsyncValue<List<Material>>> {
   Future<void> saveMaterialsLocally() async {
     try {
       final box = await _getMaterialsBox();
-      
+
       // Clear existing data and save all current materials
       await box.clear();
-      
+
       // Create a map of materials with IDs as keys
       final Map<String, Material> materialMap = {
-        for (Material material in _allMaterials) material.id: material
+        for (Material material in _allMaterials) material.id: material,
       };
-      
+
       await box.putAll(materialMap);
       print('Successfully saved ${_allMaterials.length} materials to Hive');
     } catch (e) {
@@ -370,11 +376,11 @@ class MaterialsNotifier extends StateNotifier<AsyncValue<List<Material>>> {
     try {
       final box = await _getMaterialsBox();
       final List<Material> materials = box.values.toList();
-      
+
       _allMaterials = materials;
       _rebuildSearchTrie();
       state = AsyncValue.data(_allMaterials);
-      
+
       print('Loaded ${materials.length} materials from Hive storage');
     } catch (e) {
       print('Error loading materials from Hive: $e');
