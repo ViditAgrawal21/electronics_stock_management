@@ -12,6 +12,17 @@ class BOMItemAdapter extends TypeAdapter<BOMItem> {
       serialNumber: reader.readInt(),
       reference: reader.readString(),
       value: reader.readString(),
+      // Fix: materialName can be int or String, handle both
+      materialName: () {
+        var val = reader.read();
+        if (val is int) {
+          return val.toString();
+        } else if (val == null) {
+          return '';
+        } else {
+          return val as String;
+        }
+      }(),
       footprint: reader.readString(),
       quantity: reader.readInt(),
       layer: reader.readString(),
@@ -26,6 +37,7 @@ class BOMItemAdapter extends TypeAdapter<BOMItem> {
     writer.writeInt(obj.serialNumber);
     writer.writeString(obj.reference);
     writer.writeString(obj.value);
+    writer.writeString(obj.materialName);
     writer.writeString(obj.footprint);
     writer.writeInt(obj.quantity);
     writer.writeString(obj.layer);

@@ -39,6 +39,7 @@ class _BomUploadScreenState extends ConsumerState<BomUploadScreen>
   bool _hasUnsavedChanges = false;
   bool _isWorkingWithTempDevice = false;
   List<PCB> _tempPcbs = []; // Store temp PCBs for display
+  Map<String, dynamic> _materialAnalysis = {}; // Store current analysis
 
   @override
   void initState() {
@@ -57,6 +58,7 @@ class _BomUploadScreenState extends ConsumerState<BomUploadScreen>
         final pcb = _tempPcbs[widget.pcbIndex!];
         if (pcb.bom != null) {
           _currentBomItems = List.from(pcb.bom!.items);
+          _analyzeMaterials(); // Analyze loaded BOM
         }
       }
     } else {
@@ -68,6 +70,31 @@ class _BomUploadScreenState extends ConsumerState<BomUploadScreen>
   void dispose() {
     _tabController.dispose();
     super.dispose();
+  }
+
+  // NEW: Analyze materials against current BOM
+  void _analyzeMaterials() {
+    if (_currentBomItems.isEmpty) {
+      _materialAnalysis = {};
+      return;
+    }
+
+    // Extract material requirements from BOM
+    Map<String, int> requirements = {};
+    for (BOMItem item in _currentBomItems) {
+      String materialName = item.value
+          .trim(); // FIXED: Use 'value' not 'materialName'
+      requirements[materialName] =
+          (requirements[materialName] ?? 0) + item.quantity;
+    }
+
+    // Get analysis from materials provider
+    final materialsNotifier = ref.read(materialsProvider.notifier);
+    _materialAnalysis = materialsNotifier.analyzeMaterialRequirements(
+      requirements,
+    );
+
+    setState(() {}); // Trigger rebuild to show analysis
   }
 
   @override
@@ -101,6 +128,9 @@ class _BomUploadScreenState extends ConsumerState<BomUploadScreen>
                   case 'clear':
                     _clearCurrentBOM();
                     break;
+                  case 'analyze':
+                    _showDetailedMaterialAnalysis();
+                    break;
                 }
               },
               itemBuilder: (context) => [
@@ -114,7 +144,17 @@ class _BomUploadScreenState extends ConsumerState<BomUploadScreen>
                     ],
                   ),
                 ),
-                if (_currentBomItems.isNotEmpty)
+                if (_currentBomItems.isNotEmpty) ...[
+                  const PopupMenuItem(
+                    value: 'analyze',
+                    child: Row(
+                      children: [
+                        Icon(Icons.analytics, color: Colors.blue),
+                        SizedBox(width: 8),
+                        Text('Detailed Analysis'),
+                      ],
+                    ),
+                  ),
                   const PopupMenuItem(
                     value: 'clear',
                     child: Row(
@@ -125,6 +165,7 @@ class _BomUploadScreenState extends ConsumerState<BomUploadScreen>
                       ],
                     ),
                   ),
+                ],
               ],
             ),
           ],
@@ -174,6 +215,8 @@ class _BomUploadScreenState extends ConsumerState<BomUploadScreen>
           // BOM Preview/Edit Section
           if (_currentBomItems.isNotEmpty) ...[
             _buildBomPreviewSection(),
+            const SizedBox(height: 16),
+            _buildEnhancedMaterialValidationSection(),
             const SizedBox(height: 24),
             _buildSaveSection(),
           ],
@@ -262,42 +305,16 @@ class _BomUploadScreenState extends ConsumerState<BomUploadScreen>
         items.add(
           DropdownMenuItem(
             value: pcb.id,
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(
-                  '${widget.tempDevice!.name} - ${pcb.name}',
-                  style: const TextStyle(fontWeight: FontWeight.w500),
-                ),
-                Text(
-                  pcb.hasBOM
-                      ? 'Has BOM (${pcb.uniqueComponents} components)'
-                      : 'No BOM',
-                  style: TextStyle(
-                    fontSize: 12,
-                    color: pcb.hasBOM ? Colors.green : Colors.grey,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        );
-      }
-    } else {
-      // Show PCBs from existing devices
-      for (Device device in devices) {
-        for (PCB pcb in device.pcbs) {
-          items.add(
-            DropdownMenuItem(
-              value: pcb.id,
+            child: Container(
+              constraints: const BoxConstraints(maxWidth: 300),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   Text(
-                    '${device.name} - ${pcb.name}',
+                    '${widget.tempDevice!.name} - ${pcb.name}',
                     style: const TextStyle(fontWeight: FontWeight.w500),
+                    overflow: TextOverflow.ellipsis,
                   ),
                   Text(
                     pcb.hasBOM
@@ -309,6 +326,40 @@ class _BomUploadScreenState extends ConsumerState<BomUploadScreen>
                     ),
                   ),
                 ],
+              ),
+            ),
+          ),
+        );
+      }
+    } else {
+      // Show PCBs from existing devices
+      for (Device device in devices) {
+        for (PCB pcb in device.pcbs) {
+          items.add(
+            DropdownMenuItem(
+              value: pcb.id,
+              child: Container(
+                constraints: const BoxConstraints(maxWidth: 300),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      '${device.name} - ${pcb.name}',
+                      style: const TextStyle(fontWeight: FontWeight.w500),
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    Text(
+                      pcb.hasBOM
+                          ? 'Has BOM (${pcb.uniqueComponents} components)'
+                          : 'No BOM',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: pcb.hasBOM ? Colors.green : Colors.grey,
+                      ),
+                    ),
+                  ],
+                ),
               ),
             ),
           );
@@ -368,7 +419,7 @@ class _BomUploadScreenState extends ConsumerState<BomUploadScreen>
     }
 
     return DropdownButtonFormField<String>(
-      initialValue: _selectedPcbId,
+      value: _selectedPcbId,
       decoration: const InputDecoration(
         labelText: 'Select PCB Board',
         prefixIcon: Icon(Icons.developer_board),
@@ -398,6 +449,7 @@ class _BomUploadScreenState extends ConsumerState<BomUploadScreen>
   void _loadExistingBomForPcb(String? pcbId) {
     if (pcbId == null) {
       _currentBomItems.clear();
+      _materialAnalysis = {};
       return;
     }
 
@@ -410,12 +462,15 @@ class _BomUploadScreenState extends ConsumerState<BomUploadScreen>
 
       if (pcb.bom != null) {
         _currentBomItems = List.from(pcb.bom!.items);
+        _analyzeMaterials(); // Analyze when loading existing BOM
       } else {
         _currentBomItems.clear();
+        _materialAnalysis = {};
       }
     } else {
       // Load from existing devices (existing logic)
       _currentBomItems.clear();
+      _materialAnalysis = {};
     }
   }
 
@@ -470,7 +525,7 @@ class _BomUploadScreenState extends ConsumerState<BomUploadScreen>
                     '2. Reference - Component reference (e.g., C1, R1, U1)',
                   ),
                   const Text(
-                    '3. Value - Raw material name (must match materials list)',
+                    '3. Value - Component value (must match materials list exactly)',
                   ),
                   const Text(
                     '4. Footprint - Component footprint (e.g., 0805, LQFP64)',
@@ -488,7 +543,7 @@ class _BomUploadScreenState extends ConsumerState<BomUploadScreen>
                       const SizedBox(width: 4),
                       Expanded(
                         child: Text(
-                          'Value column must exactly match material names in your inventory',
+                          'Value column must exactly match raw material names in your inventory (case-insensitive)',
                           style: TextStyle(
                             fontSize: 12,
                             color: Colors.orange[700],
@@ -585,11 +640,21 @@ class _BomUploadScreenState extends ConsumerState<BomUploadScreen>
                     ),
                   ],
                 ),
-                Chip(
-                  label: Text('${_currentBomItems.length} components'),
-                  backgroundColor: Theme.of(
-                    context,
-                  ).primaryColor.withOpacity(0.1),
+                Row(
+                  children: [
+                    Chip(
+                      label: Text('${_currentBomItems.length} components'),
+                      backgroundColor: Theme.of(
+                        context,
+                      ).primaryColor.withOpacity(0.1),
+                    ),
+                    const SizedBox(width: 8),
+                    IconButton(
+                      icon: const Icon(Icons.analytics, color: Colors.blue),
+                      onPressed: _showDetailedMaterialAnalysis,
+                      tooltip: 'Detailed Analysis',
+                    ),
+                  ],
                 ),
               ],
             ),
@@ -600,72 +665,138 @@ class _BomUploadScreenState extends ConsumerState<BomUploadScreen>
               onItemEdit: _handleBomItemEdit,
               onItemDelete: _handleBomItemDelete,
             ),
-
-            const SizedBox(height: 16),
-            _buildMaterialValidationSection(),
           ],
         ),
       ),
     );
   }
 
-  Widget _buildMaterialValidationSection() {
-    final materialsAsync = ref.watch(materialsProvider);
+  // NEW: Enhanced material validation section with detailed analysis
+  Widget _buildEnhancedMaterialValidationSection() {
+    if (_materialAnalysis.isEmpty) return const SizedBox.shrink();
 
-    return materialsAsync.when(
-      data: (materials) {
-        List<String> missingMaterials = [];
-        List<String> availableMaterials = [];
+    final canProduce = _materialAnalysis['canProduce'] ?? false;
+    final availableMaterials =
+        _materialAnalysis['availableMaterials'] as List<String>? ?? [];
+    final missingMaterials =
+        _materialAnalysis['missingMaterials'] as List<String>? ?? [];
+    final matchPercentage =
+        _materialAnalysis['matchPercentage'] as double? ?? 0.0;
 
-        for (BOMItem item in _currentBomItems) {
-          bool materialExists = materials.any(
-            (m) => m.name.toLowerCase() == item.value.toLowerCase(),
-          );
-
-          if (materialExists) {
-            availableMaterials.add(item.value);
-          } else {
-            missingMaterials.add(item.value);
-          }
-        }
-
-        return Column(
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(
-              'Material Validation',
-              style: Theme.of(
-                context,
-              ).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.bold),
+            Row(
+              children: [
+                Icon(
+                  canProduce ? Icons.check_circle : Icons.warning,
+                  color: canProduce ? Colors.green : Colors.orange,
+                ),
+                const SizedBox(width: 8),
+                Text(
+                  'Material Validation',
+                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                const Spacer(),
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 8,
+                    vertical: 4,
+                  ),
+                  decoration: BoxDecoration(
+                    color: canProduce ? Colors.green[100] : Colors.orange[100],
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Text(
+                    '${matchPercentage.toStringAsFixed(1)}% Match',
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.bold,
+                      color: canProduce
+                          ? Colors.green[700]
+                          : Colors.orange[700],
+                    ),
+                  ),
+                ),
+              ],
             ),
-            const SizedBox(height: 8),
+            const SizedBox(height: 12),
 
-            if (availableMaterials.isNotEmpty)
+            // Summary status
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: canProduce ? Colors.green[50] : Colors.orange[50],
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(
+                  color: canProduce ? Colors.green[200]! : Colors.orange[200]!,
+                ),
+              ),
+              child: Row(
+                children: [
+                  Icon(
+                    canProduce ? Icons.check_circle : Icons.warning,
+                    color: canProduce ? Colors.green[600] : Colors.orange[600],
+                    size: 20,
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      canProduce
+                          ? 'All ${availableMaterials.length} materials found in inventory'
+                          : '${missingMaterials.length} materials missing from inventory',
+                      style: TextStyle(
+                        color: canProduce
+                            ? Colors.green[700]
+                            : Colors.orange[700],
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+
+            if (availableMaterials.isNotEmpty) ...[
+              const SizedBox(height: 12),
               Container(
                 padding: const EdgeInsets.all(8),
                 decoration: BoxDecoration(
                   color: Colors.green[50],
                   borderRadius: BorderRadius.circular(6),
                 ),
-                child: Row(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Icon(
-                      Icons.check_circle,
-                      color: Colors.green[600],
-                      size: 16,
+                    Row(
+                      children: [
+                        Icon(Icons.check, color: Colors.green[600], size: 16),
+                        const SizedBox(width: 4),
+                        Text(
+                          'Available Materials (${availableMaterials.length}):',
+                          style: TextStyle(
+                            color: Colors.green[700],
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ],
                     ),
-                    const SizedBox(width: 8),
+                    const SizedBox(height: 4),
                     Text(
-                      '${availableMaterials.length} materials found in inventory',
-                      style: TextStyle(
-                        color: Colors.green[700],
-                        fontSize: 12,
-                        fontWeight: FontWeight.w500,
-                      ),
+                      availableMaterials.take(5).join(', ') +
+                          (availableMaterials.length > 5 ? '...' : ''),
+                      style: TextStyle(color: Colors.green[600], fontSize: 11),
                     ),
                   ],
                 ),
               ),
+            ],
 
             if (missingMaterials.isNotEmpty) ...[
               const SizedBox(height: 8),
@@ -681,13 +812,13 @@ class _BomUploadScreenState extends ConsumerState<BomUploadScreen>
                     Row(
                       children: [
                         Icon(Icons.error, color: Colors.red[600], size: 16),
-                        const SizedBox(width: 8),
+                        const SizedBox(width: 4),
                         Text(
-                          '${missingMaterials.length} materials not found in inventory:',
+                          'Missing Materials (${missingMaterials.length}):',
                           style: TextStyle(
                             color: Colors.red[700],
                             fontSize: 12,
-                            fontWeight: FontWeight.w500,
+                            fontWeight: FontWeight.w600,
                           ),
                         ),
                       ],
@@ -698,15 +829,46 @@ class _BomUploadScreenState extends ConsumerState<BomUploadScreen>
                           (missingMaterials.length > 5 ? '...' : ''),
                       style: TextStyle(color: Colors.red[600], fontSize: 11),
                     ),
+                    const SizedBox(height: 4),
+                    Text(
+                      'Add these materials to inventory or check spelling',
+                      style: TextStyle(
+                        color: Colors.red[500],
+                        fontSize: 10,
+                        fontStyle: FontStyle.italic,
+                      ),
+                    ),
                   ],
                 ),
               ),
             ],
+
+            // Action buttons
+            if (missingMaterials.isNotEmpty) ...[
+              const SizedBox(height: 12),
+              Row(
+                children: [
+                  Expanded(
+                    child: CustomOutlinedButton(
+                      text: 'View Details',
+                      onPressed: _showDetailedMaterialAnalysis,
+                      icon: Icons.analytics,
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: CustomOutlinedButton(
+                      text: 'Add Missing',
+                      onPressed: _showAddMissingMaterialsDialog,
+                      icon: Icons.add,
+                    ),
+                  ),
+                ],
+              ),
+            ],
           ],
-        );
-      },
-      loading: () => const SizedBox(),
-      error: (_, __) => const SizedBox(),
+        ),
+      ),
     );
   }
 
@@ -753,6 +915,242 @@ class _BomUploadScreenState extends ConsumerState<BomUploadScreen>
             ),
           ],
         ),
+      ),
+    );
+  }
+
+  // NEW: Show detailed material analysis dialog
+  void _showDetailedMaterialAnalysis() {
+    if (_materialAnalysis.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('No material analysis available. Upload a BOM first.'),
+          backgroundColor: Colors.orange,
+        ),
+      );
+      return;
+    }
+
+    showDialog(
+      context: context,
+      builder: (context) => _buildDetailedAnalysisDialog(),
+    );
+  }
+
+  Widget _buildDetailedAnalysisDialog() {
+    final availableMaterials =
+        _materialAnalysis['availableMaterials'] as List<String>? ?? [];
+    final missingMaterials =
+        _materialAnalysis['missingMaterials'] as List<String>? ?? [];
+    final availableQuantities =
+        _materialAnalysis['availableQuantities'] as Map<String, int>? ?? {};
+    final shortages = _materialAnalysis['shortages'] as Map<String, int>? ?? {};
+    final matchPercentage =
+        _materialAnalysis['matchPercentage'] as double? ?? 0.0;
+
+    return AlertDialog(
+      title: const Text('Detailed Material Analysis'),
+      content: SizedBox(
+        width: double.maxFinite,
+        height: 400,
+        child: SingleChildScrollView(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // Summary
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Colors.blue[50],
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Summary',
+                      style: const TextStyle(fontWeight: FontWeight.bold),
+                    ),
+                    const SizedBox(height: 8),
+                    Text('Match Rate: ${matchPercentage.toStringAsFixed(1)}%'),
+                    Text('Available: ${availableMaterials.length} materials'),
+                    Text('Missing: ${missingMaterials.length} materials'),
+                    Text(
+                      'Total Required: ${_currentBomItems.length} components',
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 16),
+
+              // Available materials
+              if (availableMaterials.isNotEmpty) ...[
+                const Text(
+                  'Available Materials:',
+                  style: TextStyle(
+                    fontWeight: FontWeight.bold,
+                    color: Colors.green,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                ...availableMaterials.map((material) {
+                  int available = availableQuantities[material] ?? 0;
+                  return Container(
+                    margin: const EdgeInsets.only(bottom: 4),
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: Colors.green[50],
+                      borderRadius: BorderRadius.circular(4),
+                    ),
+                    child: Row(
+                      children: [
+                        Icon(Icons.check, color: Colors.green, size: 16),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            material,
+                            style: const TextStyle(fontSize: 12),
+                          ),
+                        ),
+                        Text(
+                          '$available units',
+                          style: const TextStyle(fontSize: 12),
+                        ),
+                      ],
+                    ),
+                  );
+                }).toList(),
+                const SizedBox(height: 16),
+              ],
+
+              // Missing materials
+              if (missingMaterials.isNotEmpty) ...[
+                const Text(
+                  'Missing Materials:',
+                  style: TextStyle(
+                    fontWeight: FontWeight.bold,
+                    color: Colors.red,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                ...missingMaterials.map((material) {
+                  int shortage = shortages[material] ?? 0;
+                  return Container(
+                    margin: const EdgeInsets.only(bottom: 4),
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: Colors.red[50],
+                      borderRadius: BorderRadius.circular(4),
+                    ),
+                    child: Row(
+                      children: [
+                        Icon(Icons.error, color: Colors.red, size: 16),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            material,
+                            style: const TextStyle(fontSize: 12),
+                          ),
+                        ),
+                        Text(
+                          'Need: $shortage',
+                          style: const TextStyle(fontSize: 12),
+                        ),
+                      ],
+                    ),
+                  );
+                }).toList(),
+              ],
+            ],
+          ),
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: const Text('Close'),
+        ),
+        if (missingMaterials.isNotEmpty)
+          CustomButton(
+            text: 'Add Missing',
+            onPressed: () {
+              Navigator.pop(context);
+              _showAddMissingMaterialsDialog();
+            },
+          ),
+      ],
+    );
+  }
+
+  // NEW: Show dialog to add missing materials
+  void _showAddMissingMaterialsDialog() {
+    final missingMaterials =
+        _materialAnalysis['missingMaterials'] as List<String>? ?? [];
+
+    if (missingMaterials.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('No missing materials to add'),
+          backgroundColor: Colors.blue,
+        ),
+      );
+      return;
+    }
+
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Add Missing Materials'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'The following materials are missing from your inventory:',
+            ),
+            const SizedBox(height: 12),
+            Container(
+              height: 200,
+              width: double.maxFinite,
+              child: ListView.builder(
+                itemCount: missingMaterials.length,
+                itemBuilder: (context, index) {
+                  return ListTile(
+                    leading: Icon(Icons.add_circle_outline, color: Colors.blue),
+                    title: Text(missingMaterials[index]),
+                    dense: true,
+                  );
+                },
+              ),
+            ),
+            const SizedBox(height: 12),
+            const Text(
+              'You can add these materials to your inventory through the Materials List screen.',
+              style: TextStyle(fontSize: 12, color: Colors.grey),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel'),
+          ),
+          CustomButton(
+            text: 'Go to Materials',
+            onPressed: () {
+              Navigator.pop(context);
+              // Navigate to materials screen
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  content: Text(
+                    'Navigation to Materials screen will be implemented',
+                  ),
+                  backgroundColor: Colors.blue,
+                ),
+              );
+            },
+          ),
+        ],
       ),
     );
   }
@@ -895,6 +1293,9 @@ class _BomUploadScreenState extends ConsumerState<BomUploadScreen>
         _isLoading = false;
       });
 
+      // Analyze materials after successful import
+      _analyzeMaterials();
+
       if (mounted && bomItems.isNotEmpty) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -994,6 +1395,7 @@ class _BomUploadScreenState extends ConsumerState<BomUploadScreen>
     }
   }
 
+  // Rest of the existing methods remain the same...
   Future<bool?> _showUnsavedChangesDialog() {
     return showDialog<bool>(
       context: context,
@@ -1077,6 +1479,7 @@ class _BomUploadScreenState extends ConsumerState<BomUploadScreen>
                 _selectedPcbId = null;
                 _selectedDeviceId = null;
                 _currentBomItems.clear();
+                _materialAnalysis = {};
                 _hasUnsavedChanges = false;
               });
             },
@@ -1098,6 +1501,8 @@ class _BomUploadScreenState extends ConsumerState<BomUploadScreen>
       _currentBomItems[index] = updatedItem;
       _hasUnsavedChanges = true;
     });
+    // Re-analyze materials after editing
+    _analyzeMaterials();
   }
 
   void _handleBomItemDelete(int index) {
@@ -1105,6 +1510,8 @@ class _BomUploadScreenState extends ConsumerState<BomUploadScreen>
       _currentBomItems.removeAt(index);
       _hasUnsavedChanges = true;
     });
+    // Re-analyze materials after deletion
+    _analyzeMaterials();
   }
 
   void _clearCurrentBOM() {
@@ -1126,6 +1533,7 @@ class _BomUploadScreenState extends ConsumerState<BomUploadScreen>
             onPressed: () {
               setState(() {
                 _currentBomItems.clear();
+                _materialAnalysis = {};
                 _hasUnsavedChanges = false;
               });
               Navigator.pop(context);
@@ -1205,6 +1613,7 @@ class _BomUploadScreenState extends ConsumerState<BomUploadScreen>
     bool canProduce = feasibility['canProduce'] ?? false;
     Map<String, int> requirements = feasibility['requirements'] ?? {};
     Map<String, int> shortages = feasibility['shortages'] ?? {};
+    int maxProducible = feasibility['maxProducible'] ?? 0;
 
     return AlertDialog(
       title: Text('Batch Calculation: ${device.name}'),
@@ -1220,34 +1629,37 @@ class _BomUploadScreenState extends ConsumerState<BomUploadScreen>
                 borderRadius: BorderRadius.circular(8),
                 border: Border.all(color: Colors.blue[200]!),
               ),
-              child: Row(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Icon(Icons.info_outline, color: Colors.blue[600]),
-                  const SizedBox(width: 8),
                   Text(
-                    'Production Quantity: $quantity units',
+                    'Production Analysis',
                     style: const TextStyle(fontWeight: FontWeight.bold),
+                  ),
+                  const SizedBox(height: 8),
+                  Text('Requested Quantity: $quantity units'),
+                  Text('Max Producible: $maxProducible units'),
+                  Row(
+                    children: [
+                      Icon(
+                        canProduce ? Icons.check_circle : Icons.error,
+                        color: canProduce ? Colors.green : Colors.red,
+                        size: 16,
+                      ),
+                      const SizedBox(width: 4),
+                      Text(
+                        canProduce
+                            ? 'Production Feasible'
+                            : 'Insufficient Materials',
+                        style: TextStyle(
+                          fontWeight: FontWeight.bold,
+                          color: canProduce ? Colors.green : Colors.red,
+                        ),
+                      ),
+                    ],
                   ),
                 ],
               ),
-            ),
-            const SizedBox(height: 16),
-
-            Row(
-              children: [
-                Icon(
-                  canProduce ? Icons.check_circle : Icons.error,
-                  color: canProduce ? Colors.green : Colors.red,
-                ),
-                const SizedBox(width: 8),
-                Text(
-                  canProduce ? 'Production Feasible' : 'Insufficient Materials',
-                  style: TextStyle(
-                    fontWeight: FontWeight.bold,
-                    color: canProduce ? Colors.green : Colors.red,
-                  ),
-                ),
-              ],
             ),
             const SizedBox(height: 16),
 
@@ -1323,27 +1735,6 @@ class _BomUploadScreenState extends ConsumerState<BomUploadScreen>
                   ),
                 ),
               ),
-            ] else ...[
-              Container(
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: Colors.orange[50],
-                  borderRadius: BorderRadius.circular(8),
-                  border: Border.all(color: Colors.orange[200]!),
-                ),
-                child: Row(
-                  children: [
-                    Icon(Icons.warning_amber, color: Colors.orange[600]),
-                    const SizedBox(width: 8),
-                    const Expanded(
-                      child: Text(
-                        'No material requirements calculated. Please check if BOM data is available.',
-                        style: TextStyle(fontSize: 12),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
             ],
           ],
         ),
@@ -1353,21 +1744,93 @@ class _BomUploadScreenState extends ConsumerState<BomUploadScreen>
           onPressed: () => Navigator.pop(context),
           child: const Text('Close'),
         ),
+        if (maxProducible > 0)
+          CustomOutlinedButton(
+            text: 'Produce $maxProducible',
+            onPressed: () {
+              Navigator.pop(context);
+              _initiateProduction(device, maxProducible);
+            },
+          ),
         if (canProduce)
           CustomButton(
             text: 'Proceed to Production',
             onPressed: () {
               Navigator.pop(context);
-              // Navigate to production screen or handle production
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(
-                  content: Text('Production feature will be implemented soon'),
-                  backgroundColor: Colors.blue,
-                ),
-              );
+              _initiateProduction(device, quantity);
             },
           ),
       ],
+    );
+  }
+
+  // NEW: Initiate production process
+  void _initiateProduction(Device device, int quantity) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Confirm Production'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text('Produce $quantity units of ${device.name}?'),
+            const SizedBox(height: 12),
+            Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: Colors.orange[50],
+                borderRadius: BorderRadius.circular(6),
+              ),
+              child: const Text(
+                'This will deduct materials from your inventory.',
+                style: TextStyle(fontSize: 12),
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel'),
+          ),
+          CustomButton(
+            text: 'Confirm Production',
+            onPressed: () async {
+              Navigator.pop(context);
+
+              try {
+                await ref
+                    .read(deviceProvider.notifier)
+                    .produceDevice(
+                      device.id,
+                      quantity,
+                      'Batch production from BOM screen',
+                    );
+
+                if (mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text(
+                        'Successfully produced $quantity units of ${device.name}',
+                      ),
+                      backgroundColor: Colors.green,
+                    ),
+                  );
+                }
+              } catch (e) {
+                if (mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text('Production failed: $e'),
+                      backgroundColor: Colors.red,
+                    ),
+                  );
+                }
+              }
+            },
+          ),
+        ],
+      ),
     );
   }
 
@@ -1390,20 +1853,23 @@ class _BomUploadScreenState extends ConsumerState<BomUploadScreen>
               const Text('2. Download the Excel template'),
               const Text('3. Fill in your BOM data following the format'),
               const Text('4. Upload the Excel file'),
-              const Text('5. Review and edit if needed'),
-              const Text('6. Save the BOM'),
+              const Text('5. Review material validation'),
+              const Text('6. Add missing materials if needed'),
+              const Text('7. Save the BOM'),
               const SizedBox(height: 12),
               const Text(
-                'Important Notes:',
+                'Material Matching:',
                 style: TextStyle(fontWeight: FontWeight.bold),
               ),
               const SizedBox(height: 4),
               const Text(
-                '• Value column must match exact material names in inventory',
+                '• Value column must match exact raw material names in inventory',
               ),
-              const Text('• Use "top" or "bottom" for layer column'),
-              const Text('• All columns are required'),
-              const Text('• Quantity must be positive numbers'),
+              const Text(
+                '• Matching is case-insensitive but spelling must be exact',
+              ),
+              const Text('• Use detailed analysis to see matching results'),
+              const Text('• Add missing materials before production'),
               const SizedBox(height: 12),
               const Text(
                 'Batch Calculator:',
@@ -1411,9 +1877,9 @@ class _BomUploadScreenState extends ConsumerState<BomUploadScreen>
               ),
               const SizedBox(height: 4),
               const Text('• Enter production quantity to check feasibility'),
-              const Text('• System calculates material requirements'),
-              const Text('• Shows shortages if materials are insufficient'),
-              const Text('• Only devices with complete BOMs appear here'),
+              const Text('• System shows maximum producible quantity'),
+              const Text('• Material shortages are highlighted'),
+              const Text('• Initiate production directly from analysis'),
               if (_isWorkingWithTempDevice) ...[
                 const SizedBox(height: 12),
                 Container(
@@ -1431,8 +1897,8 @@ class _BomUploadScreenState extends ConsumerState<BomUploadScreen>
                         style: TextStyle(fontWeight: FontWeight.bold),
                       ),
                       SizedBox(height: 4),
-                      Text('• Changes are saved to your device being created'),
-                      Text('• BOMs persist until you manually remove them'),
+                      Text('• Real-time material validation'),
+                      Text('• Changes saved to device being created'),
                       Text('• Click "Update BOM" to save changes'),
                       Text('• Return to PCB creation to continue'),
                     ],

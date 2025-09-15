@@ -36,14 +36,14 @@ class ExcelService {
 
           print('Processing sheet: $tableName');
 
-          // Skip header row (assuming first row is header)
-          for (int rowIndex = 1; rowIndex < sheet.maxRows; rowIndex++) {
+          // Skip header rows - start from row 5 (index 4)
+          for (int rowIndex = 4; rowIndex < sheet.maxRows; rowIndex++) {
             List<Data?> row = sheet.row(rowIndex);
             if (_isEmptyRow(row)) continue;
 
             // Get exact cell values as strings to preserve Excel format
             List<dynamic> rowValues = row
-                .map((cell) => cell?.value?.toString() ?? '')
+                .map((cell) => cell?.value?.toString().trim() ?? '')
                 .toList();
 
             // Check if first column (material name) is empty
@@ -263,6 +263,7 @@ class ExcelService {
         'Sr.No',
         'Reference',
         'Value',
+        'Material',
         'Footprint',
         'Qty',
         'Top/Bottom',
@@ -348,7 +349,8 @@ class ExcelService {
       List<String> headers = [
         'Sr.No',
         'Reference',
-        'Value (Raw Material)',
+        'Value',
+        'Material',
         'Footprint',
         'Qty',
         'Top/Bottom',
@@ -364,10 +366,10 @@ class ExcelService {
 
       // Add example rows
       List<List<dynamic>> examples = [
-        [1, 'C1', 'Capacitor 10uF', '0805', 1, 'top'],
-        [2, 'R1', 'Resistor 1K', '0603', 1, 'top'],
-        [3, 'U1', 'IC STM32', 'LQFP64', 1, 'top'],
-        [4, 'LED1', 'LED Red', '0805', 1, 'bottom'],
+        [1, 'C1', '10uF', 'Capacitor 10uF', '0805', 1, 'top'],
+        [2, 'R1', '1K', 'Resistor 1K', '0603', 1, 'top'],
+        [3, 'U1', 'STM32', 'IC STM32', 'LQFP64', 1, 'top'],
+        [4, 'LED1', 'Red', 'LED Red', '0805', 1, 'bottom'],
       ];
 
       for (int i = 0; i < examples.length; i++) {

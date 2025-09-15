@@ -21,18 +21,19 @@ class BOMItemAdapter extends TypeAdapter<BOMItem> {
       serialNumber: fields[1] as int,
       reference: fields[2] as String,
       value: fields[3] as String,
-      footprint: fields[4] as String,
-      quantity: fields[5] as int,
-      layer: fields[6] as String,
-      pcbId: fields[7] as String,
-      createdAt: fields[8] as DateTime,
+      materialName: fields[4] as String,
+      footprint: fields[5] as String,
+      quantity: fields[6] as int,
+      layer: fields[7] as String,
+      pcbId: fields[8] as String,
+      createdAt: fields[9] as DateTime,
     );
   }
 
   @override
   void write(BinaryWriter writer, BOMItem obj) {
     writer
-      ..writeByte(9)
+      ..writeByte(10)
       ..writeByte(0)
       ..write(obj.id)
       ..writeByte(1)
@@ -42,14 +43,16 @@ class BOMItemAdapter extends TypeAdapter<BOMItem> {
       ..writeByte(3)
       ..write(obj.value)
       ..writeByte(4)
-      ..write(obj.footprint)
+      ..write(obj.materialName)
       ..writeByte(5)
-      ..write(obj.quantity)
+      ..write(obj.footprint)
       ..writeByte(6)
-      ..write(obj.layer)
+      ..write(obj.quantity)
       ..writeByte(7)
-      ..write(obj.pcbId)
+      ..write(obj.layer)
       ..writeByte(8)
+      ..write(obj.pcbId)
+      ..writeByte(9)
       ..write(obj.createdAt);
   }
 

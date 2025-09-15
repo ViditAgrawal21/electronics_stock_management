@@ -1,1 +1,0 @@
-- [x] Update main.dart to initialize Hive with custom path 'Z:\3.Alim_Shaikh\DOCUMENTS'

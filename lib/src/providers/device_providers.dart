@@ -4,6 +4,7 @@ import '../models/devices.dart';
 import '../models/pcb.dart';
 import '../models/bom.dart';
 import '../models/materials.dart';
+import 'materials_providers.dart';
 
 // Hive box keys
 const String _devicesBoxKey = 'devices_box';
@@ -11,9 +12,11 @@ const String _productionHistoryBoxKey = 'production_history_box';
 
 // Device state notifier with Hive persistence
 class DeviceNotifier extends StateNotifier<AsyncValue<List<Device>>> {
-  DeviceNotifier() : super(const AsyncValue.loading()) {
+  DeviceNotifier(this.ref) : super(const AsyncValue.loading()) {
     _loadDevices();
   }
+
+  final Ref ref;
 
   List<Device> _allDevices = [];
   List<ProductionRecord> _productionHistory = [];
@@ -52,7 +55,7 @@ class DeviceNotifier extends StateNotifier<AsyncValue<List<Device>>> {
     }
   }
 
-  // Add new device
+  // Add new device WITHOUT automatic material deduction
   Future<void> addDevice(Device device) async {
     try {
       // Add to local list
@@ -69,11 +72,35 @@ class DeviceNotifier extends StateNotifier<AsyncValue<List<Device>>> {
       // Update state
       state = AsyncValue.data(List.from(_allDevices));
 
-      print('Device ${device.name} added and saved to Hive');
+      print(
+        'Device ${device.name} added and saved to Hive (no materials deducted)',
+      );
     } catch (error) {
       print('Error adding device to Hive: $error');
       // Remove from local list if Hive save failed
       _allDevices.removeWhere((d) => d.id == device.id);
+      rethrow;
+    }
+  }
+
+  // NEW: Add device with production (materials will be deducted)
+  Future<void> addDeviceWithProduction(Device device, int quantity) async {
+    try {
+      // First add the device
+      await addDevice(device);
+
+      // Then handle production if quantity > 0
+      if (quantity > 0) {
+        await produceDevice(
+          device.id,
+          quantity,
+          'Device creation and production',
+        );
+      }
+
+      print('Device ${device.name} created and $quantity units produced');
+    } catch (error) {
+      print('Error creating device with production: $error');
       rethrow;
     }
   }
@@ -103,10 +130,28 @@ class DeviceNotifier extends StateNotifier<AsyncValue<List<Device>>> {
   // Delete device
   Future<void> deleteDevice(String deviceId) async {
     try {
-      // Remove from local list
+      // Find device to remove
       Device? deviceToRemove = _allDevices
           .where((d) => d.id == deviceId)
           .firstOrNull;
+
+      if (deviceToRemove != null) {
+        // Revert raw materials quantities based on device BOM
+        Map<String, int> materialsToRevert =
+            calculateDeviceMaterialRequirements(deviceToRemove);
+
+        if (materialsToRevert.isNotEmpty) {
+          // Add materials back to inventory (negative usage = addition)
+          await ref
+              .read(materialsProvider.notifier)
+              .addMaterialsByNames(materialsToRevert);
+          print(
+            'Reverted materials for deleted device ${deviceToRemove.name}: $materialsToRevert',
+          );
+        }
+      }
+
+      // Remove from local list
       _allDevices.removeWhere((d) => d.id == deviceId);
 
       // Remove from Hive
@@ -177,6 +222,26 @@ class DeviceNotifier extends StateNotifier<AsyncValue<List<Device>>> {
     }
   }
 
+  // NEW: Calculate material requirements for a single device (1 unit)
+  Map<String, int> calculateDeviceMaterialRequirements(Device device) {
+    Map<String, int> requirements = {};
+
+    for (PCB pcb in device.pcbs) {
+      if (pcb.bom != null) {
+        for (BOMItem item in pcb.bom!.items) {
+          String materialName = item.value
+              .trim(); // Use 'value' field as material name
+          int requiredPerPcb = item.quantity;
+
+          requirements[materialName] =
+              (requirements[materialName] ?? 0) + requiredPerPcb;
+        }
+      }
+    }
+
+    return requirements;
+  }
+
   // Calculate material requirements for batch production
   Map<String, int> calculateBatchMaterialRequirements(
     String deviceId,
@@ -185,66 +250,146 @@ class DeviceNotifier extends StateNotifier<AsyncValue<List<Device>>> {
     Device? device = _allDevices.where((d) => d.id == deviceId).firstOrNull;
     if (device == null) return {};
 
-    Map<String, int> totalRequirements = {};
+    Map<String, int> singleDeviceRequirements =
+        calculateDeviceMaterialRequirements(device);
+    Map<String, int> batchRequirements = {};
 
-    // Calculate requirements from all PCB BOMs
-    for (PCB pcb in device.pcbs) {
-      if (pcb.bom != null) {
-        for (BOMItem item in pcb.bom!.items) {
-          String materialName = item.value; // Raw material name
-          int requiredPerPcb = item.quantity;
-          int totalRequired = requiredPerPcb * quantity;
-
-          totalRequirements[materialName] =
-              (totalRequirements[materialName] ?? 0) + totalRequired;
-        }
-      }
+    // Multiply by quantity for batch production
+    for (String materialName in singleDeviceRequirements.keys) {
+      int requiredPerDevice = singleDeviceRequirements[materialName] ?? 0;
+      batchRequirements[materialName] = requiredPerDevice * quantity;
     }
 
-    return totalRequirements;
+    return batchRequirements;
   }
 
-  // Check if device can be produced with available materials
+  // NEW: Enhanced production feasibility check
   Map<String, dynamic> checkProductionFeasibility(
     String deviceId,
     int quantity,
     List<Material> availableMaterials,
   ) {
+    Device? device = _allDevices.where((d) => d.id == deviceId).firstOrNull;
+    if (device == null) {
+      return {
+        'canProduce': false,
+        'error': 'Device not found',
+        'requirements': <String, int>{},
+        'shortages': <String, int>{},
+        'available': <String, int>{},
+      };
+    }
+
+    if (!device.isReadyForProduction) {
+      return {
+        'canProduce': false,
+        'error': 'Device not ready for production (missing BOMs)',
+        'requirements': <String, int>{},
+        'shortages': <String, int>{},
+        'available': <String, int>{},
+      };
+    }
+
     Map<String, int> requirements = calculateBatchMaterialRequirements(
       deviceId,
       quantity,
     );
-    Map<String, int> shortages = {};
-    Map<String, int> available = {};
-    bool canProduce = true;
 
-    for (String materialName in requirements.keys) {
-      int requiredQty = requirements[materialName] ?? 0;
-
-      // Find material by name (case insensitive)
-      Material? material = availableMaterials
-          .where((m) => m.name.toLowerCase() == materialName.toLowerCase())
-          .firstOrNull;
-
-      if (material != null) {
-        available[materialName] = material.remainingQuantity;
-        if (material.remainingQuantity < requiredQty) {
-          shortages[materialName] = requiredQty - material.remainingQuantity;
-          canProduce = false;
-        }
-      } else {
-        shortages[materialName] = requiredQty;
-        available[materialName] = 0;
-        canProduce = false;
-      }
-    }
+    // Use the enhanced analysis from MaterialsProvider
+    final materialsNotifier = ref.read(materialsProvider.notifier);
+    Map<String, dynamic> analysis = materialsNotifier
+        .analyzeMaterialRequirements(requirements);
 
     return {
-      'canProduce': canProduce,
+      'canProduce': analysis['canProduce'],
       'requirements': requirements,
-      'shortages': shortages,
-      'available': available,
+      'shortages': analysis['shortages'],
+      'available': analysis['availableQuantities'],
+      'missingMaterials': analysis['missingMaterials'],
+      'matchPercentage': analysis['matchPercentage'],
+      'maxProducible': materialsNotifier.calculateMaxProducibleQuantity(
+        calculateDeviceMaterialRequirements(device),
+      ),
     };
+  }
+
+  // NEW: Produce devices (deduct materials and record production)
+  Future<void> produceDevice(
+    String deviceId,
+    int quantity, [
+    String? notes,
+  ]) async {
+    try {
+      Device? device = _allDevices.where((d) => d.id == deviceId).firstOrNull;
+      if (device == null) {
+        throw Exception('Device not found');
+      }
+
+      if (!device.isReadyForProduction) {
+        throw Exception('Device not ready for production (missing BOMs)');
+      }
+
+      // Get current materials for feasibility check
+      final materialsAsync = ref.read(materialsProvider);
+      await materialsAsync.when(
+        data: (materials) async {
+          // Check production feasibility
+          Map<String, dynamic> feasibility = checkProductionFeasibility(
+            deviceId,
+            quantity,
+            materials,
+          );
+
+          if (!feasibility['canProduce']) {
+            List<String> missingMaterials =
+                feasibility['missingMaterials'] ?? [];
+            Map<String, int> shortages = feasibility['shortages'] ?? {};
+
+            String errorMessage = 'Cannot produce $quantity units. ';
+            if (missingMaterials.isNotEmpty) {
+              errorMessage +=
+                  'Missing materials: ${missingMaterials.join(", ")}. ';
+            }
+            if (shortages.isNotEmpty) {
+              errorMessage +=
+                  'Shortages: ${shortages.entries.map((e) => '${e.key}: ${e.value}').join(", ")}';
+            }
+
+            throw Exception(errorMessage);
+          }
+
+          // Calculate materials to use
+          Map<String, int> materialsToUse = calculateBatchMaterialRequirements(
+            deviceId,
+            quantity,
+          );
+
+          // Deduct materials from inventory
+          await ref
+              .read(materialsProvider.notifier)
+              .useMaterialsByNames(materialsToUse);
+
+          // Record production
+          await recordProduction(
+            deviceId: deviceId,
+            quantityProduced: quantity,
+            materialsUsed: materialsToUse,
+            notes: notes ?? 'Device production',
+          );
+
+          print('Successfully produced $quantity units of ${device.name}');
+        },
+        loading: () {
+          throw Exception('Materials data still loading');
+        },
+        error: (error, _) {
+          throw Exception('Error accessing materials data: $error');
+        },
+      );
+    } catch (error) {
+      print('Error producing device: $error');
+      rethrow;
+    }
   }
 
   // Record production
@@ -346,6 +491,35 @@ class DeviceNotifier extends StateNotifier<AsyncValue<List<Device>>> {
     };
   }
 
+  // NEW: Get comprehensive device analysis for production planning
+  Map<String, dynamic> getDeviceProductionAnalysis(String deviceId) {
+    Device? device = getDeviceById(deviceId);
+    if (device == null) return {};
+
+    Map<String, int> requirements = calculateDeviceMaterialRequirements(device);
+    final materialsNotifier = ref.read(materialsProvider.notifier);
+    Map<String, dynamic> analysis = materialsNotifier
+        .analyzeMaterialRequirements(requirements);
+
+    List<ProductionRecord> deviceHistory = getDeviceProductionHistory(deviceId);
+    int totalProduced = deviceHistory.fold(
+      0,
+      (sum, record) => sum + record.quantityProduced,
+    );
+
+    return {
+      'device': device,
+      'materialRequirements': requirements,
+      'materialAnalysis': analysis,
+      'productionHistory': deviceHistory,
+      'totalProduced': totalProduced,
+      'isReadyForProduction': device.isReadyForProduction,
+      'maxProducible': analysis['canProduce']
+          ? materialsNotifier.calculateMaxProducibleQuantity(requirements)
+          : 0,
+    };
+  }
+
   // Clear all data (for testing/reset)
   Future<void> resetData() async {
     try {
@@ -384,7 +558,7 @@ class DeviceNotifier extends StateNotifier<AsyncValue<List<Device>>> {
 // Provider instances
 final deviceProvider =
     StateNotifierProvider<DeviceNotifier, AsyncValue<List<Device>>>(
-      (ref) => DeviceNotifier(),
+      (ref) => DeviceNotifier(ref),
     );
 
 // Ready for production devices provider
@@ -430,4 +604,11 @@ final deviceProductionHistoryProvider =
     Provider.family<List<ProductionRecord>, String>((ref, deviceId) {
       final notifier = ref.read(deviceProvider.notifier);
       return notifier.getDeviceProductionHistory(deviceId);
+    });
+
+// NEW: Device production analysis provider
+final deviceProductionAnalysisProvider =
+    Provider.family<Map<String, dynamic>, String>((ref, deviceId) {
+      final notifier = ref.read(deviceProvider.notifier);
+      return notifier.getDeviceProductionAnalysis(deviceId);
     });

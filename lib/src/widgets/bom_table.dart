@@ -206,7 +206,7 @@ class BomTable extends StatelessWidget {
       text: item.serialNumber.toString(),
     );
     final referenceController = TextEditingController(text: item.reference);
-    final valueController = TextEditingController(text: item.value);
+    final materialController = TextEditingController(text: item.materialName);
     final footprintController = TextEditingController(text: item.footprint);
     final quantityController = TextEditingController(
       text: item.quantity.toString(),
@@ -239,10 +239,8 @@ class BomTable extends StatelessWidget {
                 ),
                 const SizedBox(height: 12),
                 TextFormField(
-                  controller: valueController,
-                  decoration: const InputDecoration(
-                    labelText: 'Value (Material Name)',
-                  ),
+                  controller: materialController,
+                  decoration: const InputDecoration(labelText: 'Material Name'),
                 ),
                 const SizedBox(height: 12),
                 TextFormField(
@@ -285,7 +283,7 @@ class BomTable extends StatelessWidget {
                   serialNumber:
                       int.tryParse(serialController.text) ?? item.serialNumber,
                   reference: referenceController.text.trim(),
-                  value: valueController.text.trim(),
+                  materialName: materialController.text.trim(),
                   footprint: footprintController.text.trim(),
                   quantity:
                       int.tryParse(quantityController.text) ?? item.quantity,
@@ -309,7 +307,7 @@ class BomTable extends StatelessWidget {
       builder: (context) => AlertDialog(
         title: const Text('Delete BOM Item'),
         content: Text(
-          'Are you sure you want to delete "${item.reference} - ${item.value}"?',
+          'Are you sure you want to delete "${item.reference} - ${item.materialName}"?',
         ),
         actions: [
           TextButton(

@@ -11,16 +11,18 @@ class BOMItem extends HiveObject {
   @HiveField(2)
   final String reference;
   @HiveField(3)
-  final String value;
+  final String value; // Component value (e.g., 10uF, 1K)
   @HiveField(4)
-  final String footprint;
+  final String materialName; // Raw material name (must match materials list)
   @HiveField(5)
-  final int quantity;
+  final String footprint;
   @HiveField(6)
-  final String layer; // top/bottom
+  final int quantity;
   @HiveField(7)
-  final String pcbId;
+  final String layer; // top/bottom
   @HiveField(8)
+  final String pcbId;
+  @HiveField(9)
   final DateTime createdAt;
 
   BOMItem({
@@ -28,6 +30,7 @@ class BOMItem extends HiveObject {
     required this.serialNumber,
     required this.reference,
     required this.value,
+    required this.materialName,
     required this.footprint,
     required this.quantity,
     required this.layer,
@@ -42,6 +45,7 @@ class BOMItem extends HiveObject {
       serialNumber: json['serialNumber'] ?? 0,
       reference: json['reference'] ?? '',
       value: json['value'] ?? '',
+      materialName: json['materialName'] ?? '',
       footprint: json['footprint'] ?? '',
       quantity: json['quantity'] ?? 0,
       layer: json['layer'] ?? 'top',
@@ -59,6 +63,7 @@ class BOMItem extends HiveObject {
       'serialNumber': serialNumber,
       'reference': reference,
       'value': value,
+      'materialName': materialName,
       'footprint': footprint,
       'quantity': quantity,
       'layer': layer,
@@ -73,9 +78,17 @@ class BOMItem extends HiveObject {
     required String id,
     required String pcbId,
   }) {
+    // Determine if "Material" column exists by checking row length
+    bool hasMaterialColumn = row.length > 6;
+
     // Handle layer value
     String layerValue = 'top'; // Default value
-    if (row.length > 5 && row[5] != null) {
+    if (hasMaterialColumn && row[6] != null) {
+      String rawLayer = row[6].toString().toLowerCase().trim();
+      if (['top', 'bottom'].contains(rawLayer)) {
+        layerValue = rawLayer;
+      }
+    } else if (!hasMaterialColumn && row.length > 5 && row[5] != null) {
       String rawLayer = row[5].toString().toLowerCase().trim();
       if (['top', 'bottom'].contains(rawLayer)) {
         layerValue = rawLayer;
@@ -84,9 +97,12 @@ class BOMItem extends HiveObject {
 
     // Handle quantity - default to 1 if 0 or invalid
     int quantity = 1;
-    if (row.length > 4 && row[4] != null) {
-      quantity = int.tryParse(row[4].toString()) ?? 1;
+    if (hasMaterialColumn && row.length > 5 && row[5] != null) {
+      quantity = int.tryParse(row[5].toString()) ?? 1;
       if (quantity <= 0) quantity = 1; // Default to 1 for invalid quantities
+    } else if (!hasMaterialColumn && row.length > 4 && row[4] != null) {
+      quantity = int.tryParse(row[4].toString()) ?? 1;
+      if (quantity <= 0) quantity = 1;
     }
 
     // Handle serial number
@@ -100,7 +116,12 @@ class BOMItem extends HiveObject {
       serialNumber: serialNumber,
       reference: row.length > 1 ? (row[1]?.toString() ?? '').trim() : '',
       value: row.length > 2 ? (row[2]?.toString() ?? '').trim() : '',
-      footprint: row.length > 3 ? (row[3]?.toString() ?? '').trim() : '',
+      materialName: hasMaterialColumn
+          ? (row.length > 4 ? (row[4]?.toString() ?? '').trim() : '')
+          : '',
+      footprint: hasMaterialColumn
+          ? (row.length > 3 ? (row[3]?.toString() ?? '').trim() : '')
+          : (row.length > 3 ? (row[3]?.toString() ?? '').trim() : ''),
       quantity: quantity,
       layer: layerValue,
       pcbId: pcbId,
@@ -110,7 +131,15 @@ class BOMItem extends HiveObject {
 
   // Convert to Excel row
   List<dynamic> toExcelRow() {
-    return [serialNumber, reference, value, footprint, quantity, layer];
+    return [
+      serialNumber,
+      reference,
+      value,
+      materialName,
+      footprint,
+      quantity,
+      layer,
+    ];
   }
 
   // Copy with method
@@ -119,6 +148,7 @@ class BOMItem extends HiveObject {
     int? serialNumber,
     String? reference,
     String? value,
+    String? materialName,
     String? footprint,
     int? quantity,
     String? layer,
@@ -130,6 +160,7 @@ class BOMItem extends HiveObject {
       serialNumber: serialNumber ?? this.serialNumber,
       reference: reference ?? this.reference,
       value: value ?? this.value,
+      materialName: materialName ?? this.materialName,
       footprint: footprint ?? this.footprint,
       quantity: quantity ?? this.quantity,
       layer: layer ?? this.layer,
@@ -140,7 +171,7 @@ class BOMItem extends HiveObject {
 
   @override
   String toString() {
-    return 'BOMItem(id: $id, reference: $reference, value: $value, qty: $quantity)';
+    return 'BOMItem(id: $id, reference: $reference, value: $value, material: $materialName, qty: $quantity)';
   }
 
   @override

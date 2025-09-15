@@ -3,7 +3,8 @@ import 'package:hive_flutter/hive_flutter.dart';
 import 'package:electronics_stock_management/src/models/materials.dart';
 import '../services/excel_service.dart';
 import '../utils/search_trie.dart';
-// import '../constants/app_config.dart';
+import '../constants/app_config.dart';
+import 'dart:math' as math;
 
 // Hive box name constant
 const String _materialsBoxName = 'materials_box';
@@ -25,11 +26,9 @@ class MaterialsNotifier extends StateNotifier<AsyncValue<List<Material>>> {
   // Load materials (from Hive or initialize empty)
   Future<void> _loadMaterials() async {
     try {
-      // Load from Hive storage
       await loadMaterialsFromLocal();
-    } catch (error) {
+    } catch (error, stackTrace) {
       print('Error loading materials: $error');
-      // If loading fails, start with empty list
       _allMaterials = [];
       _rebuildSearchTrie();
       state = AsyncValue.data(_allMaterials);
@@ -171,6 +170,190 @@ class MaterialsNotifier extends StateNotifier<AsyncValue<List<Material>>> {
     } catch (e) {
       print('Error using materials: $e');
     }
+  }
+
+  // Use materials by names (decrease remaining quantity)
+  Future<void> useMaterialsByNames(Map<String, int> materialNamesToUse) async {
+    try {
+      final box = await _getMaterialsBox();
+      Map<String, int> processedMaterials = {};
+
+      for (String materialName in materialNamesToUse.keys) {
+        int quantityToUse = materialNamesToUse[materialName] ?? 0;
+
+        // Find material by name (case insensitive)
+        int index = _allMaterials.indexWhere(
+          (m) =>
+              m.name.toLowerCase().trim() == materialName.toLowerCase().trim(),
+        );
+
+        if (index != -1) {
+          Material material = _allMaterials[index];
+          int newRemainingQuantity =
+              (material.remainingQuantity - quantityToUse).clamp(
+                0,
+                material.initialQuantity,
+              );
+
+          _allMaterials[index] = material.copyWith(
+            remainingQuantity: newRemainingQuantity,
+            usedQuantity: material.initialQuantity - newRemainingQuantity,
+            lastUsedAt: DateTime.now(),
+          );
+
+          await box.put(material.id, _allMaterials[index]);
+          processedMaterials[materialName] = quantityToUse;
+
+          print(
+            'Used $quantityToUse units of "${materialName}" (ID: ${material.id})',
+          );
+        } else {
+          print('WARNING: Material "${materialName}" not found in inventory');
+        }
+      }
+
+      state = AsyncValue.data(List.from(_allMaterials));
+      print(
+        'Successfully processed ${processedMaterials.length} materials by name',
+      );
+    } catch (e) {
+      print('Error using materials by names: $e');
+      rethrow;
+    }
+  }
+
+  Future<void> addMaterialsByNames(Map<String, int> materialNamesToAdd) async {
+    try {
+      final box = await _getMaterialsBox();
+
+      for (String materialName in materialNamesToAdd.keys) {
+        int quantityToAdd = materialNamesToAdd[materialName] ?? 0;
+
+        int index = _allMaterials.indexWhere(
+          (m) =>
+              m.name.toLowerCase().trim() == materialName.toLowerCase().trim(),
+        );
+
+        if (index != -1) {
+          Material material = _allMaterials[index];
+          int newRemainingQuantity =
+              (material.remainingQuantity + quantityToAdd).clamp(
+                0,
+                material.initialQuantity,
+              );
+
+          _allMaterials[index] = material.copyWith(
+            remainingQuantity: newRemainingQuantity,
+            usedQuantity: material.initialQuantity - newRemainingQuantity,
+            lastUsedAt: DateTime.now(),
+          );
+
+          await box.put(material.id, _allMaterials[index]);
+          print('Added back $quantityToAdd units to "${materialName}"');
+        }
+      }
+
+      state = AsyncValue.data(List.from(_allMaterials));
+    } catch (e) {
+      print('Error adding materials by names: $e');
+      rethrow;
+    }
+  }
+
+  // NEW: Get detailed material analysis for BOM validation
+  Map<String, dynamic> analyzeMaterialRequirements(
+    Map<String, int> requiredMaterials,
+  ) {
+    List<String> availableMaterials = [];
+    List<String> missingMaterials = [];
+    Map<String, int> availableQuantities = {};
+    Map<String, int> shortages = {};
+    Map<String, Material> foundMaterials = {};
+    bool canProduce = true;
+
+    for (String materialName in requiredMaterials.keys) {
+      int requiredQty = requiredMaterials[materialName] ?? 0;
+
+      // Find material by name (case insensitive, trimmed)
+      Material? material = _allMaterials
+          .where(
+            (m) =>
+                m.name.toLowerCase().trim() ==
+                materialName.toLowerCase().trim(),
+          )
+          .firstOrNull;
+
+      if (material != null) {
+        availableMaterials.add(materialName);
+        availableQuantities[materialName] = material.remainingQuantity;
+        foundMaterials[materialName] = material;
+
+        if (material.remainingQuantity < requiredQty) {
+          shortages[materialName] = requiredQty - material.remainingQuantity;
+          canProduce = false;
+        }
+      } else {
+        missingMaterials.add(materialName);
+        availableQuantities[materialName] = 0;
+        shortages[materialName] = requiredQty;
+        canProduce = false;
+      }
+    }
+
+    return {
+      'canProduce': canProduce,
+      'availableMaterials': availableMaterials,
+      'missingMaterials': missingMaterials,
+      'availableQuantities': availableQuantities,
+      'shortages': shortages,
+      'foundMaterials': foundMaterials,
+      'totalRequired': requiredMaterials.values.fold(
+        0,
+        (sum, qty) => sum + qty,
+      ),
+      'totalAvailable': availableQuantities.values.fold(
+        0,
+        (sum, qty) => sum + qty,
+      ),
+      'matchPercentage': missingMaterials.isEmpty
+          ? 100.0
+          : (availableMaterials.length / requiredMaterials.length) * 100,
+    };
+  }
+  // Add this method to your MaterialsNotifier class in materials_providers.dart
+
+  // NEW: Calculate maximum producible quantity for a set of materials
+  int calculateMaxProducibleQuantity(
+    Map<String, int> materialRequirementsPerUnit,
+  ) {
+    if (materialRequirementsPerUnit.isEmpty) return 0;
+
+    int maxQuantity = double.maxFinite.toInt();
+
+    for (String materialName in materialRequirementsPerUnit.keys) {
+      int requiredPerUnit = materialRequirementsPerUnit[materialName] ?? 0;
+      if (requiredPerUnit <= 0) continue;
+
+      // Find material by name (case insensitive)
+      Material? material = _allMaterials
+          .where(
+            (m) =>
+                m.name.toLowerCase().trim() ==
+                materialName.toLowerCase().trim(),
+          )
+          .firstOrNull;
+
+      if (material != null) {
+        int possibleFromThisMaterial =
+            material.remainingQuantity ~/ requiredPerUnit;
+        maxQuantity = math.min(maxQuantity, possibleFromThisMaterial);
+      } else {
+        // Material not found, can't produce any
+        return 0;
+      }
+    }
+
+    return maxQuantity == double.maxFinite.toInt() ? 0 : maxQuantity;
   }
 
   // Delete material

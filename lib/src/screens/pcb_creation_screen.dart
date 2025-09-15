@@ -27,9 +27,10 @@ class _PcbCreationScreenState extends ConsumerState<PcbCreationScreen>
   List<SubComponent> _subComponents = [];
   List<PCB> _pcbs = [];
   bool _isLoading = false;
-  String? _currentDeviceId; // Track current device being created
+  String? _currentDeviceId;
   Map<String, int> _materialRequirements = {};
   Map<String, dynamic> _productionFeasibility = {};
+  bool _showMaterialAnalysis = false;
 
   static const _preloadedComponents = [
     'Enclosure',
@@ -54,6 +55,7 @@ class _PcbCreationScreenState extends ConsumerState<PcbCreationScreen>
       _subComponents = List.from(widget.deviceToEdit!.subComponents);
       _pcbs = List.from(widget.deviceToEdit!.pcbs);
       _currentDeviceId = widget.deviceToEdit!.id;
+      _updateMaterialRequirements(); // Analyze existing device
     } else {
       // Generate a temporary device ID for tracking PCBs during creation
       _currentDeviceId = 'temp_${DateTime.now().millisecondsSinceEpoch}';
@@ -64,21 +66,9 @@ class _PcbCreationScreenState extends ConsumerState<PcbCreationScreen>
   void dispose() {
     _deviceNameController.dispose();
     _descriptionController.dispose();
+    _quantityController.dispose();
     super.dispose();
   }
-
-  // @overridecd
-  // void initState() {
-  //   super.initState();
-  //   // Generate a temporary device ID for tracking PCBs during creation
-  //   _currentDeviceId = 'temp_${DateTime.now().millisecondsSinceEpoch}';
-  // }
-
-  // @override
-  // void dispose() {
-  //   _descriptionController.dispose();
-  //   super.dispose();
-  // }
 
   @override
   Widget build(BuildContext context) {
@@ -90,6 +80,17 @@ class _PcbCreationScreenState extends ConsumerState<PcbCreationScreen>
               : 'Edit Device',
         ),
         actions: [
+          if (_materialRequirements.isNotEmpty)
+            IconButton(
+              icon: Icon(
+                Icons.analytics,
+                color: _productionFeasibility['canProduce'] == true
+                    ? Colors.green
+                    : Colors.orange,
+              ),
+              onPressed: () => _showProductionPlanningDialog(),
+              tooltip: 'Production Planning',
+            ),
           IconButton(
             icon: const Icon(Icons.help_outline),
             onPressed: _showHelpDialog,
@@ -109,7 +110,7 @@ class _PcbCreationScreenState extends ConsumerState<PcbCreationScreen>
               const SizedBox(height: 24),
               _buildPcbSection(),
               const SizedBox(height: 24),
-              _buildMaterialRequirementsSection(),
+              if (_showMaterialAnalysis) _buildMaterialRequirementsSection(),
               const SizedBox(height: 32),
               _buildCreateButton(),
             ],
@@ -131,6 +132,7 @@ class _PcbCreationScreenState extends ConsumerState<PcbCreationScreen>
         validator: (value) => value == null || value.trim().isEmpty
             ? 'Please enter device name'
             : null,
+        onChanged: (value) => _updateMaterialRequirements(),
       ),
       const SizedBox(height: 16),
       TextFormField(
@@ -469,6 +471,193 @@ class _PcbCreationScreenState extends ConsumerState<PcbCreationScreen>
     }
   }
 
+  // Show production planning dialog
+  void _showProductionPlanningDialog() {
+    final quantity = int.tryParse(_quantityController.text) ?? 1;
+
+    // Compute missing materials outside the widget tree
+    final missingMaterials = _productionFeasibility['missingMaterials'] != null
+        ? List.from(
+            _productionFeasibility['missingMaterials'] as List<dynamic>,
+          ).map((e) => e.toString()).toList()
+        : <String>[];
+
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Production Planning'),
+        content: SizedBox(
+          width: double.maxFinite,
+          height: 400,
+          child: SingleChildScrollView(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // Production summary
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: _productionFeasibility['canProduce'] == true
+                        ? Colors.green[50]
+                        : Colors.orange[50],
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(
+                      color: _productionFeasibility['canProduce'] == true
+                          ? Colors.green[200]!
+                          : Colors.orange[200]!,
+                    ),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Icon(
+                            _productionFeasibility['canProduce'] == true
+                                ? Icons.check_circle
+                                : Icons.warning,
+                            color: _productionFeasibility['canProduce'] == true
+                                ? Colors.green
+                                : Colors.orange,
+                          ),
+                          const SizedBox(width: 8),
+                          Text(
+                            'Production Analysis',
+                            style: const TextStyle(fontWeight: FontWeight.bold),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 8),
+                      Text('Requested Quantity: $quantity units'),
+                      Text('Device Name: ${_deviceNameController.text.trim()}'),
+                      if (_productionFeasibility['maxProducible'] != null)
+                        Text(
+                          'Max Producible: ${_productionFeasibility['maxProducible']} units',
+                        ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 16),
+
+                // Material requirements
+                if (_materialRequirements.isNotEmpty) ...[
+                  const Text(
+                    'Material Requirements:',
+                    style: TextStyle(fontWeight: FontWeight.bold),
+                  ),
+                  const SizedBox(height: 8),
+                  ..._materialRequirements.entries.map((entry) {
+                    final available =
+                        _productionFeasibility['available']
+                            as Map<String, int>? ??
+                        {};
+                    final shortages =
+                        _productionFeasibility['shortages']
+                            as Map<String, int>? ??
+                        {};
+
+                    final materialName = entry.key;
+                    final required = entry.value;
+                    final availableQty = available[materialName] ?? 0;
+                    final shortage = shortages[materialName] ?? 0;
+                    final hasShortage = shortage > 0;
+
+                    return Container(
+                      margin: const EdgeInsets.only(bottom: 4),
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(
+                        color: hasShortage ? Colors.red[50] : Colors.green[50],
+                        borderRadius: BorderRadius.circular(4),
+                        border: Border.all(
+                          color: hasShortage
+                              ? Colors.red[200]!
+                              : Colors.green[200]!,
+                        ),
+                      ),
+                      child: Row(
+                        children: [
+                          Expanded(
+                            child: Text(
+                              materialName,
+                              style: const TextStyle(fontSize: 12),
+                            ),
+                          ),
+                          Text(
+                            'Need: $required | Have: $availableQty',
+                            style: const TextStyle(fontSize: 12),
+                          ),
+                          if (hasShortage) ...[
+                            const SizedBox(width: 8),
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 4,
+                                vertical: 2,
+                              ),
+                              decoration: BoxDecoration(
+                                color: Colors.red[100],
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                              child: Text(
+                                'Short: $shortage',
+                                style: const TextStyle(
+                                  fontSize: 10,
+                                  color: Colors.red,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ],
+                      ),
+                    );
+                  }).toList(),
+                ],
+
+                // Missing materials
+                if (missingMaterials.isNotEmpty) ...[
+                  const SizedBox(height: 16),
+                  const Text(
+                    'Missing Materials:',
+                    style: TextStyle(
+                      fontWeight: FontWeight.bold,
+                      color: Colors.red,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: Colors.red[50],
+                      borderRadius: BorderRadius.circular(6),
+                    ),
+                    child: Text(
+                      missingMaterials.join(', '),
+                      style: const TextStyle(fontSize: 12),
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Close'),
+          ),
+          if (_productionFeasibility['canProduce'] == true)
+            CustomButton(
+              text: 'Create & Produce',
+              onPressed: () {
+                Navigator.pop(context);
+                _handleCreateDeviceWithProduction();
+              },
+            ),
+        ],
+      ),
+    );
+  }
+
   // Dialogs
   void _showQuickAddDialog() {
     showDialog(
@@ -533,6 +722,7 @@ class _PcbCreationScreenState extends ConsumerState<PcbCreationScreen>
           _subComponents.add(newComponent);
         }
         setState(() {});
+        _updateMaterialRequirements(); // Update analysis
       },
     );
   }
@@ -545,7 +735,7 @@ class _PcbCreationScreenState extends ConsumerState<PcbCreationScreen>
         final newPcb = PCB(
           id: pcb?.id ?? DateTime.now().millisecondsSinceEpoch.toString(),
           name: data['name']!,
-          deviceId: _currentDeviceId!, // Use temporary device ID
+          deviceId: _currentDeviceId!,
           bom: pcb?.bom,
           createdAt: pcb?.createdAt ?? DateTime.now(),
           updatedAt: DateTime.now(),
@@ -559,6 +749,7 @@ class _PcbCreationScreenState extends ConsumerState<PcbCreationScreen>
           _pcbs.add(newPcb);
         }
         setState(() {});
+        _updateMaterialRequirements(); // Update analysis
       },
     );
   }
@@ -625,6 +816,7 @@ class _PcbCreationScreenState extends ConsumerState<PcbCreationScreen>
         ),
       );
     });
+    _updateMaterialRequirements(); // Update analysis
   }
 
   void _removeItem<T>(int index, List<T> list, String itemType) {
@@ -648,6 +840,7 @@ class _PcbCreationScreenState extends ConsumerState<PcbCreationScreen>
             onPressed: () {
               setState(() => list.removeAt(index));
               Navigator.pop(context);
+              _updateMaterialRequirements(); // Update analysis
             },
           ),
         ],
@@ -687,8 +880,8 @@ class _PcbCreationScreenState extends ConsumerState<PcbCreationScreen>
         builder: (context) => BomUploadScreen(
           pcbId: pcb.id,
           pcbName: pcb.name,
-          tempDevice: tempDevice, // Pass the temporary device state
-          pcbIndex: pcbIndex, // Pass the PCB index for updating
+          tempDevice: tempDevice,
+          pcbIndex: pcbIndex,
         ),
       ),
     );
@@ -698,6 +891,7 @@ class _PcbCreationScreenState extends ConsumerState<PcbCreationScreen>
       setState(() {
         _pcbs[pcbIndex] = result;
       });
+      _updateMaterialRequirements(); // Update analysis after BOM change
 
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
@@ -726,22 +920,91 @@ class _PcbCreationScreenState extends ConsumerState<PcbCreationScreen>
     }
 
     final quantity = int.tryParse(_quantityController.text) ?? 1;
+    setState(() => _isLoading = true);
 
-    // Check if production is feasible
-    if (_productionFeasibility.isNotEmpty) {
-      final canProduce = _productionFeasibility['canProduce'] ?? true;
-      if (!canProduce) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text(
-              'Insufficient materials for production. Please check stock levels.',
+    try {
+      final deviceId = DateTime.now().millisecondsSinceEpoch.toString();
+      final device = Device(
+        id: deviceId,
+        name: _deviceNameController.text.trim(),
+        subComponents: _subComponents,
+        pcbs: _pcbs.map((pcb) => pcb.copyWith(deviceId: deviceId)).toList(),
+        createdAt: DateTime.now(),
+        updatedAt: DateTime.now(),
+        description: _descriptionController.text.trim().isEmpty
+            ? null
+            : _descriptionController.text.trim(),
+      );
+
+      // Check if device is ready for production (has complete BOMs) and quantity > 0
+      if (device.isReadyForProduction && quantity > 0) {
+        // Create device WITH automatic material deduction
+        await ref
+            .read(deviceProvider.notifier)
+            .addDeviceWithProduction(device, quantity);
+
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(
+                'Device created and $quantity units produced! Materials automatically deducted from inventory.',
+              ),
+              backgroundColor: Colors.green,
             ),
-            backgroundColor: Colors.red,
-          ),
-        );
-        return;
+          );
+        }
+      } else {
+        // Create device WITHOUT material deduction
+        await ref.read(deviceProvider.notifier).addDevice(device);
+
+        if (mounted) {
+          String message = 'Device created successfully! ';
+          if (!device.isReadyForProduction) {
+            message += 'Upload BOMs to complete setup and enable production.';
+          } else if (quantity == 0) {
+            message += 'No materials deducted (quantity = 0).';
+          }
+
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(message),
+              backgroundColor: device.isReadyForProduction
+                  ? Colors.blue
+                  : Colors.orange,
+            ),
+          );
+        }
       }
+
+      if (mounted) {
+        _showSuccessDialog(device);
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed: $e'), backgroundColor: Colors.red),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
     }
+  }
+
+  // NEW: Handle create device with production
+  Future<void> _handleCreateDeviceWithProduction() async {
+    if (!_formKey.currentState!.validate() ||
+        _deviceNameController.text.trim().isEmpty ||
+        _pcbs.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Please complete the device setup first'),
+          backgroundColor: Colors.orange,
+        ),
+      );
+      return;
+    }
+
+    final quantity = int.tryParse(_quantityController.text) ?? 1;
 
     setState(() => _isLoading = true);
 
@@ -759,30 +1022,16 @@ class _PcbCreationScreenState extends ConsumerState<PcbCreationScreen>
             : _descriptionController.text.trim(),
       );
 
-      // Add device
-      await ref.read(deviceProvider.notifier).addDevice(device);
-
-      // Record production if quantity > 0
-      if (quantity > 0 && _materialRequirements.isNotEmpty) {
-        await ref
-            .read(deviceProvider.notifier)
-            .recordProduction(
-              deviceId: deviceId,
-              quantityProduced: quantity,
-              materialsUsed: _materialRequirements,
-              notes: 'Device created and produced',
-            );
-
-        // Deduct materials from stock
-        final materialsNotifier = ref.read(materialsProvider.notifier);
-        await materialsNotifier.useMaterials(_materialRequirements);
-      }
+      // Add device WITH production
+      await ref
+          .read(deviceProvider.notifier)
+          .addDeviceWithProduction(device, quantity);
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(
-              'Device created successfully! ${quantity > 0 ? '$quantity units produced.' : ''}',
+              'Device created and $quantity units produced successfully!',
             ),
             backgroundColor: Colors.green,
           ),
@@ -811,8 +1060,27 @@ class _PcbCreationScreenState extends ConsumerState<PcbCreationScreen>
       builder: (context) => AlertDialog(
         icon: const Icon(Icons.check_circle, color: Colors.green, size: 48),
         title: const Text('Device Created!'),
-        content: Text(
-          '${device.name} created with $componentText and ${device.totalPcbs} PCBs',
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              '${device.name} created with $componentText and ${device.totalPcbs} PCBs',
+            ),
+            if (_materialRequirements.isNotEmpty) ...[
+              const SizedBox(height: 12),
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: Colors.blue[50],
+                  borderRadius: BorderRadius.circular(6),
+                ),
+                child: Text(
+                  'Material analysis available with ${_materialRequirements.length} requirements',
+                  style: const TextStyle(fontSize: 12),
+                ),
+              ),
+            ],
+          ],
         ),
         actions: [
           if (!device.isReadyForProduction)
@@ -860,33 +1128,31 @@ class _PcbCreationScreenState extends ConsumerState<PcbCreationScreen>
               const Text('4. Upload or update BOMs for each PCB'),
               const Text('5. Enter quantity to produce'),
               const Text('6. Review material requirements and stock status'),
+              const Text('7. Use production planning for detailed analysis'),
               const SizedBox(height: 12),
               const Text(
-                'Components (Optional):',
+                'NEW: Production Planning:',
                 style: TextStyle(fontWeight: FontWeight.bold),
               ),
               const SizedBox(height: 4),
-              const Text('• Use Quick Add for common components'),
-              const Text('• Add custom components as needed'),
-              const Text('• Components can be added later if needed'),
-              const SizedBox(height: 12),
               const Text(
-                'Quick Add Components:',
-                style: TextStyle(fontWeight: FontWeight.bold),
+                '• Click the analytics icon to view production analysis',
               ),
-              const SizedBox(height: 4),
-              const Text('• Enclosure, Display, SMPS, Manifold'),
-              const Text('• DP Sensor, Restkit, Regulator, Filter'),
-              const Text('• Calport, Nut'),
+              const Text('• See material requirements and availability'),
+              const Text('• Check stock shortages and missing materials'),
+              const Text(
+                '• Create device with or without immediate production',
+              ),
               const SizedBox(height: 12),
               const Text(
                 'Material Requirements:',
                 style: TextStyle(fontWeight: FontWeight.bold),
               ),
               const SizedBox(height: 4),
-              const Text('• Review required materials for your quantity'),
-              const Text('• Check stock availability and shortages'),
-              const Text('• Fill up stock if insufficient materials'),
+              const Text('• System analyzes BOM data for material needs'),
+              const Text('• Real-time stock validation against inventory'),
+              const Text('• Highlights shortages and missing materials'),
+              const Text('• Calculates maximum producible quantity'),
               const SizedBox(height: 12),
               Container(
                 padding: const EdgeInsets.all(8),
@@ -899,15 +1165,15 @@ class _PcbCreationScreenState extends ConsumerState<PcbCreationScreen>
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      'Requirements:',
+                      'Smart Features:',
                       style: TextStyle(fontWeight: FontWeight.bold),
                     ),
                     SizedBox(height: 4),
-                    Text('• Device name is required'),
-                    Text('• At least one PCB board is required'),
-                    Text('• Components are optional'),
-                    Text('• BOMs can be uploaded after creating the device'),
-                    Text('• Quantity must be a positive number'),
+                    Text('• Auto-calculates material requirements from BOMs'),
+                    Text('• Real-time inventory validation'),
+                    Text('• Production feasibility analysis'),
+                    Text('• Automatic material deduction after production'),
+                    Text('• Material restoration when devices are deleted'),
                   ],
                 ),
               ),
@@ -921,39 +1187,47 @@ class _PcbCreationScreenState extends ConsumerState<PcbCreationScreen>
     );
   }
 
-  // Update material requirements when quantity changes
+  // Update material requirements when device structure changes
   void _updateMaterialRequirements() {
     final quantity = int.tryParse(_quantityController.text) ?? 1;
-    if (quantity <= 0) return;
+    if (quantity <= 0) {
+      setState(() {
+        _materialRequirements = {};
+        _productionFeasibility = {};
+        _showMaterialAnalysis = false;
+      });
+      return;
+    }
 
-    // Create temporary device for calculation
-    final tempDevice = Device(
-      id: _currentDeviceId ?? 'temp',
-      name: _deviceNameController.text.isNotEmpty
-          ? _deviceNameController.text
-          : 'Temp Device',
-      subComponents: _subComponents,
-      pcbs: _pcbs,
-      createdAt: DateTime.now(),
-      updatedAt: DateTime.now(),
-    );
+    // Calculate material requirements from current PCBs
+    Map<String, int> requirements = {};
 
-    // Calculate material requirements
-    final deviceNotifier = ref.read(deviceProvider.notifier);
-    _materialRequirements = deviceNotifier.calculateBatchMaterialRequirements(
-      tempDevice.id,
-      quantity,
-    );
+    for (PCB pcb in _pcbs) {
+      if (pcb.bom != null) {
+        for (var item in pcb.bom!.items) {
+          String materialName = item.value.trim();
+          int requiredPerPcb = item.quantity;
+          int totalRequired = requiredPerPcb * quantity;
 
-    // Check production feasibility
-    final materialsAsync = ref.watch(materialsProvider);
-    materialsAsync.whenData((materials) {
-      _productionFeasibility = deviceNotifier.checkProductionFeasibility(
-        tempDevice.id,
-        quantity,
-        materials,
+          requirements[materialName] =
+              (requirements[materialName] ?? 0) + totalRequired;
+        }
+      }
+    }
+
+    _materialRequirements = requirements;
+
+    // Get production feasibility if we have requirements
+    if (_materialRequirements.isNotEmpty) {
+      final materialsNotifier = ref.read(materialsProvider.notifier);
+      _productionFeasibility = materialsNotifier.analyzeMaterialRequirements(
+        _materialRequirements,
       );
-    });
+      _showMaterialAnalysis = true;
+    } else {
+      _productionFeasibility = {};
+      _showMaterialAnalysis = false;
+    }
 
     setState(() {});
   }
@@ -969,66 +1243,77 @@ class _PcbCreationScreenState extends ConsumerState<PcbCreationScreen>
     final shortages =
         _productionFeasibility['shortages'] as Map<String, int>? ?? {};
     final available =
-        _productionFeasibility['available'] as Map<String, int>? ?? {};
+        _productionFeasibility['availableQuantities'] as Map<String, int>? ??
+        {};
+    final missingMaterials =
+        _productionFeasibility['missingMaterials'] as List<String>? ?? [];
 
-    return _buildCard('Material Requirements (${quantity}x)', Icons.inventory, [
+    return _buildCard('Production Analysis (${quantity}x)', Icons.analytics, [
       // Summary
       Container(
         padding: const EdgeInsets.all(12),
         decoration: BoxDecoration(
-          color: canProduce ? const Color(0xFFE8F5E8) : const Color(0xFFFFEBEE),
+          color: canProduce ? Colors.green[50] : Colors.orange[50],
           borderRadius: BorderRadius.circular(8),
           border: Border.all(
-            color: canProduce
-                ? const Color(0xFF4CAF50)
-                : const Color(0xFFF44336),
+            color: canProduce ? Colors.green[200]! : Colors.orange[200]!,
           ),
         ),
         child: Row(
           children: [
             Icon(
               canProduce ? Icons.check_circle : Icons.warning,
-              color: canProduce
-                  ? const Color(0xFF4CAF50)
-                  : const Color(0xFFF44336),
+              color: canProduce ? Colors.green : Colors.orange,
             ),
             const SizedBox(width: 12),
             Expanded(
               child: Text(
                 canProduce
                     ? 'All materials available for production'
-                    : 'Some materials are insufficient',
+                    : missingMaterials.isNotEmpty
+                    ? 'Some materials missing from inventory'
+                    : 'Some materials have insufficient stock',
                 style: TextStyle(
                   fontWeight: FontWeight.w600,
-                  color: canProduce
-                      ? const Color(0xFF2E7D32)
-                      : const Color(0xFFC62828),
+                  color: canProduce ? Colors.green[700] : Colors.orange[700],
                 ),
               ),
+            ),
+            CustomOutlinedButton(
+              text: 'Details',
+              onPressed: _showProductionPlanningDialog,
+              icon: Icons.analytics,
             ),
           ],
         ),
       ),
       const SizedBox(height: 16),
 
-      // Material list
-      ..._materialRequirements.entries.map((entry) {
+      // Quick material overview (first 3 items)
+      ..._materialRequirements.entries.take(3).map((entry) {
         final materialName = entry.key;
         final requiredQty = entry.value;
         final availableQty = available[materialName] ?? 0;
         final shortageQty = shortages[materialName] ?? 0;
         final isShort = shortageQty > 0;
+        final isMissing = missingMaterials.contains(materialName);
 
         return Container(
           margin: const EdgeInsets.only(bottom: 8),
           padding: const EdgeInsets.all(12),
           decoration: BoxDecoration(
-            color: isShort ? const Color(0xFFFFEBEE) : const Color(0xFFFAFAFA),
+            color: isMissing
+                ? Colors.red[50]
+                : isShort
+                ? Colors.orange[50]
+                : Colors.green[50],
             borderRadius: BorderRadius.circular(8),
             border: Border.all(
-              color: isShort
-                  ? const Color(0xFFF44336)
-                  : const Color(0xFFBDBDBD),
+              color: isMissing
+                  ? Colors.red[200]!
+                  : isShort
+                  ? Colors.orange[200]!
+                  : Colors.green[200]!,
             ),
           ),
           child: Row(
@@ -1043,7 +1328,9 @@ class _PcbCreationScreenState extends ConsumerState<PcbCreationScreen>
                     ),
                     const SizedBox(height: 4),
                     Text(
-                      'Required: $requiredQty | Available: $availableQty',
+                      isMissing
+                          ? 'Material not found in inventory'
+                          : 'Required: $requiredQty | Available: $availableQty',
                       style: const TextStyle(
                         fontSize: 12,
                         color: Color(0xFF757575),
@@ -1052,20 +1339,20 @@ class _PcbCreationScreenState extends ConsumerState<PcbCreationScreen>
                   ],
                 ),
               ),
-              if (isShort)
+              if (isShort || isMissing)
                 Container(
                   padding: const EdgeInsets.symmetric(
                     horizontal: 8,
                     vertical: 4,
                   ),
-                  decoration: const BoxDecoration(
-                    color: Color(0xFFFFCDD2),
-                    borderRadius: BorderRadius.all(Radius.circular(12)),
+                  decoration: BoxDecoration(
+                    color: isMissing ? Colors.red[100] : Colors.orange[100],
+                    borderRadius: const BorderRadius.all(Radius.circular(12)),
                   ),
                   child: Text(
-                    'Short: $shortageQty',
-                    style: const TextStyle(
-                      color: Color(0xFFC62828),
+                    isMissing ? 'Missing' : 'Short: $shortageQty',
+                    style: TextStyle(
+                      color: isMissing ? Colors.red[700] : Colors.orange[700],
                       fontSize: 12,
                       fontWeight: FontWeight.w600,
                     ),
@@ -1076,38 +1363,17 @@ class _PcbCreationScreenState extends ConsumerState<PcbCreationScreen>
         );
       }),
 
-      // Max producible quantity if there are shortages
-      if (!canProduce && shortages.isNotEmpty) ...[
-        const SizedBox(height: 16),
-        Container(
-          padding: const EdgeInsets.all(12),
-          decoration: BoxDecoration(
-            color: const Color(0xFFFFF3E0),
-            borderRadius: BorderRadius.circular(8),
-            border: Border.all(color: const Color(0xFFFF9800)),
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  Icon(Icons.info, color: const Color(0xFFFF9800)),
-                  const SizedBox(width: 8),
-                  const Text(
-                    'Stock Alert',
-                    style: TextStyle(
-                      fontWeight: FontWeight.w600,
-                      color: Color(0xFFEF6C00),
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 8),
-              Text(
-                'Insufficient stock for $quantity devices. Please fill up stock or reduce quantity.',
-                style: TextStyle(color: const Color(0xFFF57C00)),
-              ),
-            ],
+      // Show more indicator if there are more materials
+      if (_materialRequirements.length > 3) ...[
+        const SizedBox(height: 8),
+        Center(
+          child: Text(
+            '... and ${_materialRequirements.length - 3} more materials',
+            style: TextStyle(
+              fontSize: 12,
+              color: Colors.grey[600],
+              fontStyle: FontStyle.italic,
+            ),
           ),
         ),
       ],

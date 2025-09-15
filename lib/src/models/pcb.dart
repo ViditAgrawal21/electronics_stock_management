@@ -5,12 +5,19 @@ part 'pcb.g.dart';
 
 @HiveType(typeId: 4)
 class PCB {
+  @HiveField(0)
   final String id;
+  @HiveField(1)
   final String name;
+  @HiveField(2)
   final String deviceId;
+  @HiveField(3)
   final BOM? bom;
+  @HiveField(4)
   final DateTime createdAt;
+  @HiveField(5)
   final DateTime updatedAt;
+  @HiveField(6)
   final String? description;
 
   PCB({
