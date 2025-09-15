@@ -44,7 +44,7 @@ class BOMAdapter extends TypeAdapter<BOM> {
       id: reader.readString(),
       name: reader.readString(),
       pcbId: reader.readString(),
-      items: (reader.readList() as List).cast<BOMItem>(),
+      items: (reader.readList()).cast<BOMItem>(),
       createdAt: DateTime.fromMillisecondsSinceEpoch(reader.readInt()),
       updatedAt: DateTime.fromMillisecondsSinceEpoch(reader.readInt()),
     );

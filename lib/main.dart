@@ -13,8 +13,8 @@ void main() async {
   // Ensure flutter binding is initialized
   WidgetsFlutterBinding.ensureInitialized();
 
-  // Initialize Hive
-  await Hive.initFlutter();
+  // Initialize Hive with custom path on Windows network drive
+  Hive.init(r'Z:\3.Alim_Shaikh\DOCUMENTS');
 
   // Register Hive adapters
   Hive.registerAdapter(MaterialAdapter());
