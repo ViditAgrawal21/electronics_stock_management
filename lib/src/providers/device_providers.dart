@@ -84,6 +84,7 @@ class DeviceNotifier extends StateNotifier<AsyncValue<List<Device>>> {
   }
 
   // NEW: Add device with production (materials will be deducted)
+  // Add this to your DeviceProvider's addDeviceWithProduction method
   Future<void> addDeviceWithProduction(Device device, int quantity) async {
     try {
       // First add the device
@@ -96,6 +97,21 @@ class DeviceNotifier extends StateNotifier<AsyncValue<List<Device>>> {
           quantity,
           'Device creation and production',
         );
+
+        // CRITICAL: Multiple refresh attempts to ensure UI updates
+        print('=== Forcing materials UI refresh ===');
+
+        // Method 1: Direct refresh
+        await ref.read(materialsProvider.notifier).refreshMaterials();
+
+        // Method 2: Invalidate and rebuild
+        ref.invalidate(materialsProvider);
+
+        // Method 3: Small delay then refresh again
+        await Future.delayed(const Duration(milliseconds: 200));
+        await ref.read(materialsProvider.notifier).refreshMaterials();
+
+        print('=== Materials UI refresh completed ===');
       }
 
       print('Device ${device.name} created and $quantity units produced');
@@ -226,6 +242,14 @@ class DeviceNotifier extends StateNotifier<AsyncValue<List<Device>>> {
   Map<String, int> calculateDeviceMaterialRequirements(Device device) {
     Map<String, int> requirements = {};
 
+    // Include subComponents as materials
+    for (SubComponent comp in device.subComponents) {
+      String materialName = comp.name.trim();
+      int quantity = comp.quantity;
+      requirements[materialName] = (requirements[materialName] ?? 0) + quantity;
+    }
+
+    // Include BOM items from PCBs
     for (PCB pcb in device.pcbs) {
       if (pcb.bom != null) {
         for (BOMItem item in pcb.bom!.items) {

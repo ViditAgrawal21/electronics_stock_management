@@ -27,9 +27,47 @@ class _MaterialsListScreenState extends ConsumerState<MaterialsListScreen> {
   bool _showSaveButton = false;
 
   @override
+  void initState() {
+    super.initState();
+    // Auto-refresh when screen loads
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _forceRefresh();
+    });
+  }
+
   void dispose() {
     _searchController.dispose();
     super.dispose();
+  }
+
+  // Enhanced force refresh method
+  Future<void> _forceRefresh() async {
+    try {
+      print('=== Manual force refresh triggered ===');
+
+      // Method 1: Provider refresh
+      await ref.read(materialsProvider.notifier).refreshMaterials();
+
+      // Method 2: Invalidate provider
+      ref.invalidate(materialsProvider);
+
+      // Method 3: Load from storage again
+      await ref.read(materialsProvider.notifier).loadMaterialsFromLocal();
+
+      print('=== Manual force refresh completed ===');
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Materials refreshed'),
+            backgroundColor: Colors.green,
+            duration: Duration(seconds: 1),
+          ),
+        );
+      }
+    } catch (e) {
+      print('Error in force refresh: $e');
+    }
   }
 
   Future<void> _handleSaveData() async {

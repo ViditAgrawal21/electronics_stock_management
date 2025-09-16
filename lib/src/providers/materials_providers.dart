@@ -175,8 +175,10 @@ class MaterialsNotifier extends StateNotifier<AsyncValue<List<Material>>> {
   // Use materials by names (decrease remaining quantity)
   Future<void> useMaterialsByNames(Map<String, int> materialNamesToUse) async {
     try {
+      print('=== Starting useMaterialsByNames ===');
       final box = await _getMaterialsBox();
       Map<String, int> processedMaterials = {};
+      bool hasChanges = false;
 
       for (String materialName in materialNamesToUse.keys) {
         int quantityToUse = materialNamesToUse[materialName] ?? 0;
@@ -188,34 +190,62 @@ class MaterialsNotifier extends StateNotifier<AsyncValue<List<Material>>> {
         );
 
         if (index != -1) {
-          Material material = _allMaterials[index];
-          int newRemainingQuantity =
-              (material.remainingQuantity - quantityToUse).clamp(
-                0,
-                material.initialQuantity,
-              );
+          Material oldMaterial = _allMaterials[index];
+          print(
+            'BEFORE: ${oldMaterial.name} - Remaining: ${oldMaterial.remainingQuantity}, Used: ${oldMaterial.usedQuantity}',
+          );
 
-          _allMaterials[index] = material.copyWith(
+          int newRemainingQuantity =
+              (oldMaterial.remainingQuantity - quantityToUse).clamp(
+                0,
+                oldMaterial.initialQuantity,
+              );
+          int newUsedQuantity =
+              oldMaterial.initialQuantity - newRemainingQuantity;
+
+          Material updatedMaterial = oldMaterial.copyWith(
             remainingQuantity: newRemainingQuantity,
-            usedQuantity: material.initialQuantity - newRemainingQuantity,
+            usedQuantity: newUsedQuantity, // Explicitly set used quantity
             lastUsedAt: DateTime.now(),
           );
 
-          await box.put(material.id, _allMaterials[index]);
+          _allMaterials[index] = updatedMaterial;
+          print(
+            'AFTER: ${updatedMaterial.name} - Remaining: ${updatedMaterial.remainingQuantity}, Used: ${updatedMaterial.usedQuantity}',
+          );
+
+          // Update in Hive
+          await box.put(updatedMaterial.id, updatedMaterial);
           processedMaterials[materialName] = quantityToUse;
+          hasChanges = true;
 
           print(
-            'Used $quantityToUse units of "${materialName}" (ID: ${material.id})',
+            'Used $quantityToUse units of "$materialName" (ID: ${updatedMaterial.id})',
           );
         } else {
-          print('WARNING: Material "${materialName}" not found in inventory');
+          print('WARNING: Material "$materialName" not found in inventory');
         }
       }
 
-      state = AsyncValue.data(List.from(_allMaterials));
+      // CRITICAL: Force state update with delay to ensure all updates are complete
+      if (hasChanges) {
+        print('=== Forcing state update ===');
+        state = AsyncValue.data(List.from(_allMaterials));
+
+        // Add small delay to ensure state propagation
+        await Future.delayed(const Duration(milliseconds: 100));
+
+        // Force another state notification
+        state = AsyncValue.data(List.from(_allMaterials));
+        print(
+          'UI state forcefully updated - Material count: ${_allMaterials.length}',
+        );
+      }
+
       print(
         'Successfully processed ${processedMaterials.length} materials by name',
       );
+      print('=== Finished useMaterialsByNames ===');
     } catch (e) {
       print('Error using materials by names: $e');
       rethrow;

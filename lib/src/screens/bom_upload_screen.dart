@@ -79,8 +79,18 @@ class _BomUploadScreenState extends ConsumerState<BomUploadScreen>
       return;
     }
 
-    // Extract material requirements from BOM
+    // Extract material requirements from BOM and subComponents
     Map<String, int> requirements = {};
+
+    // Include subComponents as materials
+    if (_isWorkingWithTempDevice && widget.tempDevice != null) {
+      for (SubComponent comp in widget.tempDevice!.subComponents) {
+        String materialName = comp.name.trim();
+        requirements[materialName] =
+            (requirements[materialName] ?? 0) + comp.quantity;
+      }
+    }
+
     for (BOMItem item in _currentBomItems) {
       String materialName = item.value
           .trim(); // FIXED: Use 'value' not 'materialName'

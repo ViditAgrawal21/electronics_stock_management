@@ -848,8 +848,22 @@ class _PcbCreationScreenState extends ConsumerState<PcbCreationScreen>
     );
   }
 
+  /// Navigates to the BOM upload screen while preserving the current device state.
+  ///
+  /// This method ensures that the state of subComponents and PCBs remains intact
+  /// across navigation. A temporary device is created with the current state
+  /// (_subComponents, _pcbs, device name, description) and passed to the BOM upload screen.
+  /// On return, if a PCB is updated, it replaces the corresponding PCB in the list
+  /// and material requirements are recalculated.
+  ///
+  /// State persistence is maintained because:
+  /// - The StatefulWidget retains _subComponents and _pcbs lists in memory
+  /// - Navigation doesn't destroy the widget instance
+  /// - BOM upload screen has WillPopScope to prevent accidental state loss
+  /// - Only explicit saves update the state
   void _navigateToBomUpload(PCB pcb, int pcbIndex) async {
     // Create a temporary device with current state to pass to BOM upload
+    // This ensures BOM upload has access to all current subComponents and PCBs
     final tempDevice = widget.deviceToEdit != null
         ? widget.deviceToEdit!.copyWith(
             name: _deviceNameController.text.trim().isNotEmpty
@@ -887,6 +901,7 @@ class _PcbCreationScreenState extends ConsumerState<PcbCreationScreen>
     );
 
     // Update the PCB with returned BOM data if available
+    // This preserves state by only updating the specific PCB that was modified
     if (result != null) {
       setState(() {
         _pcbs[pcbIndex] = result;
