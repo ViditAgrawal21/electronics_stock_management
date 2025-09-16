@@ -14,7 +14,7 @@ void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
   // Initialize Hive with custom path on Windows network drive
-  Hive.init(r'Z:\3.Alim_Shaikh\DOCUMENTS');
+  Hive.init(r'Z:\Stock Management\DOCUMENTS');
 
   // Register Hive adapters
   Hive.registerAdapter(MaterialAdapter());
