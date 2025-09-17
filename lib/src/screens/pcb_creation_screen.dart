@@ -1,5 +1,8 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:excel/excel.dart' as excel;
+import 'package:file_picker/file_picker.dart';
 import '../constants/app_string.dart';
 import '../models/devices.dart';
 import '../models/pcb.dart';
@@ -176,9 +179,9 @@ class _PcbCreationScreenState extends ConsumerState<PcbCreationScreen>
           children: [
             Expanded(
               child: CustomOutlinedButton(
-                text: 'Quick Add',
-                onPressed: _showQuickAddDialog,
-                icon: Icons.flash_on,
+                text: 'Upload Excel',
+                onPressed: _handleExcelUpload,
+                icon: Icons.upload_file,
               ),
             ),
             const SizedBox(width: 8),
@@ -659,45 +662,7 @@ class _PcbCreationScreenState extends ConsumerState<PcbCreationScreen>
   }
 
   // Dialogs
-  void _showQuickAddDialog() {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Quick Add Components'),
-        content: SizedBox(
-          width: double.maxFinite,
-          height: 300,
-          child: ListView.builder(
-            itemCount: _preloadedComponents.length,
-            itemBuilder: (context, index) {
-              final component = _preloadedComponents[index];
-              final isAdded = _subComponents.any((sc) => sc.name == component);
-              return CheckboxListTile(
-                title: Text(component),
-                value: isAdded,
-                onChanged: isAdded
-                    ? null
-                    : (value) {
-                        if (value == true) _addComponent(component);
-                        Navigator.pop(context);
-                      },
-                secondary: Icon(
-                  isAdded ? Icons.check : Icons.add,
-                  color: isAdded ? Colors.green : null,
-                ),
-              );
-            },
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Close'),
-          ),
-        ],
-      ),
-    );
-  }
+  // Removed _showQuickAddDialog as Quick Add is replaced by Excel upload
 
   void _showComponentDialog([SubComponent? component, int? index]) {
     _showFormDialog(
@@ -817,6 +782,108 @@ class _PcbCreationScreenState extends ConsumerState<PcbCreationScreen>
       );
     });
     _updateMaterialRequirements(); // Update analysis
+  }
+
+  Future<void> _handleExcelUpload() async {
+    try {
+      // Pick Excel file
+      final result = await FilePicker.platform.pickFiles(
+        type: FileType.custom,
+        allowedExtensions: ['xls', 'xlsx'],
+        allowMultiple: false,
+      );
+
+      if (result == null || result.files.isEmpty) {
+        // User cancelled
+        return;
+      }
+
+      final filePath = result.files.single.path;
+      if (filePath == null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Invalid file selected'),
+            backgroundColor: Colors.red,
+          ),
+        );
+        return;
+      }
+
+      // Read file bytes
+      final bytes = await File(filePath).readAsBytes();
+      final excelFile = excel.Excel.decodeBytes(bytes);
+
+      Map<String, int> materialsToUse = {};
+
+      // Iterate sheets and rows
+      for (final sheetName in excelFile.tables.keys) {
+        final sheet = excelFile.tables[sheetName];
+        if (sheet == null) continue;
+
+        // Skip header row, start from row 1 (assuming row 0 is header)
+        for (int rowIndex = 1; rowIndex < sheet.maxRows; rowIndex++) {
+          final row = sheet.row(rowIndex);
+          if (row.isEmpty) continue;
+
+          // Columns: A=0 Sr no, B=1 Description, C=2 Make, D=3 Series, E=4 Qty
+          final descriptionCell = row.length > 1 ? row[1] : null;
+          final qtyCell = row.length > 4 ? row[4] : null;
+
+          final description = descriptionCell?.value?.toString().trim() ?? '';
+          final qtyStr = qtyCell?.value?.toString().trim() ?? '0';
+          final qty = int.tryParse(qtyStr) ?? 0;
+
+          if (description.isNotEmpty && qty > 0) {
+            materialsToUse[description] =
+                (materialsToUse[description] ?? 0) + qty;
+          }
+        }
+      }
+
+      if (materialsToUse.isEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('No valid materials found in Excel'),
+            backgroundColor: Colors.orange,
+          ),
+        );
+        return;
+      }
+
+      // Do NOT deduct materials here on Excel upload, only analyze and update UI
+      // await ref
+      //     .read(materialsProvider.notifier)
+      //     .useMaterialsByNames(materialsToUse);
+
+      // Convert materialsToUse map to SubComponent list and update _subComponents
+      _subComponents = materialsToUse.entries.map((entry) {
+        return SubComponent(
+          id: DateTime.now().millisecondsSinceEpoch.toString() + entry.key,
+          name: entry.key,
+          quantity: entry.value,
+        );
+      }).toList();
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Excel data processed. Material deduction will occur on device creation.',
+          ),
+          backgroundColor: Colors.blue,
+        ),
+      );
+
+      // Update UI to reflect new material data immediately
+      _updateMaterialRequirements();
+      setState(() {});
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Failed to process Excel file: $e'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
   }
 
   void _removeItem<T>(int index, List<T> list, String itemType) {

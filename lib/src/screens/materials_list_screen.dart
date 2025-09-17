@@ -12,7 +12,14 @@ import '../widgets/custom_button.dart';
 import '../utils/notifier.dart';
 
 class MaterialsListScreen extends ConsumerStatefulWidget {
-  const MaterialsListScreen({super.key});
+  final List<String>? initialMaterialsToAdd;
+  final Map<String, int>? initialQuantities;
+
+  const MaterialsListScreen({
+    super.key,
+    this.initialMaterialsToAdd,
+    this.initialQuantities,
+  });
 
   @override
   ConsumerState<MaterialsListScreen> createState() =>
@@ -32,6 +39,11 @@ class _MaterialsListScreenState extends ConsumerState<MaterialsListScreen> {
     // Auto-refresh when screen loads
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _forceRefresh();
+      // Show add missing materials dialog if initial materials provided
+      if (widget.initialMaterialsToAdd != null &&
+          widget.initialMaterialsToAdd!.isNotEmpty) {
+        _showAddInitialMaterialsDialog();
+      }
     });
   }
 
@@ -707,5 +719,214 @@ class _MaterialsListScreenState extends ConsumerState<MaterialsListScreen> {
   void _handleClearSearch() {
     _searchController.clear();
     setState(() {});
+  }
+
+  void _showAddInitialMaterialsDialog() {
+    if (widget.initialMaterialsToAdd == null ||
+        widget.initialMaterialsToAdd!.isEmpty) {
+      return;
+    }
+
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => AlertDialog(
+        title: const Text('Add Missing Materials'),
+        content: SizedBox(
+          width: double.maxFinite,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Text(
+                'The following materials are missing from your inventory. Please add them with their required quantities:',
+                style: TextStyle(fontSize: 14),
+              ),
+              const SizedBox(height: 16),
+              Flexible(
+                child: ListView.builder(
+                  shrinkWrap: true,
+                  itemCount: widget.initialMaterialsToAdd!.length,
+                  itemBuilder: (context, index) {
+                    final materialName = widget.initialMaterialsToAdd![index];
+                    final requiredQuantity =
+                        widget.initialQuantities?[materialName] ?? 0;
+
+                    return Card(
+                      margin: const EdgeInsets.symmetric(vertical: 4),
+                      child: ListTile(
+                        leading: const Icon(Icons.inventory_2),
+                        title: Text(materialName),
+                        subtitle: Text('Required: $requiredQuantity'),
+                        trailing: IconButton(
+                          icon: const Icon(Icons.add),
+                          onPressed: () {
+                            Navigator.of(context).pop();
+                            _showAddMaterialDialogWithPrefill(
+                              prefilledName: materialName,
+                              prefilledQuantity: requiredQuantity,
+                            );
+                          },
+                        ),
+                      ),
+                    );
+                  },
+                ),
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('Skip'),
+          ),
+          CustomButton(
+            text: 'Add All',
+            onPressed: () {
+              Navigator.of(context).pop();
+              _addAllMissingMaterials();
+            },
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showAddMaterialDialogWithPrefill({
+    String? prefilledName,
+    int? prefilledQuantity,
+  }) {
+    final nameController = TextEditingController(text: prefilledName ?? '');
+    final quantityController = TextEditingController(
+      text: prefilledQuantity != null ? prefilledQuantity.toString() : '',
+    );
+    final descriptionController = TextEditingController();
+    final GlobalKey<FormState> formKey = GlobalKey<FormState>();
+
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Add Material'),
+        content: Form(
+          key: formKey,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextFormField(
+                controller: nameController,
+                decoration: const InputDecoration(
+                  labelText: 'Material Name',
+                  prefixIcon: Icon(Icons.inventory),
+                ),
+                validator: (value) {
+                  if (value == null || value.trim().isEmpty) {
+                    return 'Please enter material name';
+                  }
+                  return null;
+                },
+              ),
+              const SizedBox(height: 16),
+              TextFormField(
+                controller: quantityController,
+                decoration: const InputDecoration(
+                  labelText: 'Initial Quantity',
+                  prefixIcon: Icon(Icons.numbers),
+                ),
+                keyboardType: TextInputType.number,
+                validator: (value) {
+                  if (value == null || value.trim().isEmpty) {
+                    return 'Please enter quantity';
+                  }
+                  if (int.tryParse(value) == null || int.parse(value) < 0) {
+                    return 'Please enter valid quantity';
+                  }
+                  return null;
+                },
+              ),
+              const SizedBox(height: 16),
+              TextFormField(
+                controller: descriptionController,
+                decoration: const InputDecoration(
+                  labelText: 'Description (Optional)',
+                  prefixIcon: Icon(Icons.description),
+                ),
+                maxLines: 2,
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () {
+              Navigator.of(context).pop();
+            },
+            child: const Text(AppStrings.cancel),
+          ),
+          CustomButton(
+            text: AppStrings.add,
+            onPressed: () {
+              if (formKey.currentState!.validate()) {
+                final material = model.Material(
+                  id: DateTime.now().millisecondsSinceEpoch.toString(),
+                  name: nameController.text.trim(),
+                  initialQuantity: int.parse(quantityController.text),
+                  remainingQuantity: int.parse(quantityController.text),
+                  createdAt: DateTime.now(),
+                  lastUsedAt: DateTime.now(),
+                  description: descriptionController.text.trim().isEmpty
+                      ? null
+                      : descriptionController.text.trim(),
+                );
+
+                ref.read(materialsProvider.notifier).addMaterial(material);
+                Navigator.of(context).pop();
+
+                // Hide save button after user modification
+                setState(() {
+                  _showSaveButton = false;
+                });
+
+                NotificationUtils.showSuccess(
+                  context,
+                  'Material added successfully',
+                );
+              }
+            },
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _addAllMissingMaterials() {
+    if (widget.initialMaterialsToAdd == null ||
+        widget.initialQuantities == null) {
+      return;
+    }
+
+    for (final materialName in widget.initialMaterialsToAdd!) {
+      final quantity = widget.initialQuantities![materialName] ?? 0;
+      final material = model.Material(
+        id: DateTime.now().millisecondsSinceEpoch.toString(),
+        name: materialName,
+        initialQuantity: quantity,
+        remainingQuantity: quantity,
+        createdAt: DateTime.now(),
+        lastUsedAt: DateTime.now(),
+        description: null,
+      );
+
+      ref.read(materialsProvider.notifier).addMaterial(material);
+    }
+
+    // Hide save button after user modification
+    setState(() {
+      _showSaveButton = false;
+    });
+
+    NotificationUtils.showSuccess(
+      context,
+      'All missing materials added successfully',
+    );
   }
 }

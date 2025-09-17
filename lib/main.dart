@@ -3,8 +3,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'src/models/materials.dart';
 import 'src/models/pcb.dart';
-import 'src/models/devices.dart'; // Add this import
-import 'src/models/bom.dart'; // Add this import for BOM adapters
+import 'src/models/devices.dart';
+import 'src/models/bom.dart';
 import 'src/screens/login_screen.dart';
 import 'src/theme/app_theme.dart';
 import 'src/constants/app_string.dart';

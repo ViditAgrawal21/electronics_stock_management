@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../constants/app_string.dart';
 import '../models/bom.dart';
@@ -9,6 +10,7 @@ import '../providers/materials_providers.dart';
 import '../services/excel_service.dart';
 import '../widgets/custom_button.dart';
 import '../widgets/bom_table.dart';
+import 'materials_list_screen.dart';
 
 class BomUploadScreen extends ConsumerStatefulWidget {
   final String? pcbId;
@@ -1146,16 +1148,41 @@ class _BomUploadScreenState extends ConsumerState<BomUploadScreen>
             child: const Text('Cancel'),
           ),
           CustomButton(
+            text: 'Copy All',
+            onPressed: () {
+              // Copy all missing materials with quantity to clipboard
+              final buffer = StringBuffer();
+              for (final material in missingMaterials) {
+                // Find quantity from _materialAnalysis shortages map
+                final shortages =
+                    _materialAnalysis['shortages'] as Map<String, int>? ?? {};
+                final qty = shortages[material] ?? 1;
+                buffer.writeln('$material: $qty');
+              }
+              Clipboard.setData(ClipboardData(text: buffer.toString()));
+
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  content: Text('All missing materials copied to clipboard'),
+                  backgroundColor: Colors.green,
+                ),
+              );
+            },
+          ),
+          CustomButton(
             text: 'Go to Materials',
             onPressed: () {
               Navigator.pop(context);
-              // Navigate to materials screen
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(
-                  content: Text(
-                    'Navigation to Materials screen will be implemented',
+              // Navigate to materials screen with missing materials pre-filled
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => MaterialsListScreen(
+                    initialMaterialsToAdd: missingMaterials,
+                    initialQuantities:
+                        _materialAnalysis['shortages'] as Map<String, int>? ??
+                        {},
                   ),
-                  backgroundColor: Colors.blue,
                 ),
               );
             },
