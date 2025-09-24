@@ -3,7 +3,7 @@ import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
 import '../models/devices.dart';
 import '../models/bom.dart';
-import '../models/pcb.dart';
+// import '../models/pcb.dart';
 
 class PDFService {
   static String _formatDateTime(DateTime dateTime) {
