@@ -22,16 +22,28 @@ class PcbCreationScreen extends ConsumerStatefulWidget {
 }
 
 class _PcbCreationScreenState extends ConsumerState<PcbCreationScreen>
-    with SingleTickerProviderStateMixin {
+    with SingleTickerProviderStateMixin, AutomaticKeepAliveClientMixin {
+  @override
+  bool get wantKeepAlive => true;
+
   final _formKey = GlobalKey<FormState>();
   final _deviceNameController = TextEditingController();
   final _descriptionController = TextEditingController();
   final _quantityController = TextEditingController(text: '1');
 
   bool _isLoading = false;
+  bool _isInitialized = false;
+  bool _hasRestoredState = false;
   Map<String, int> _materialRequirements = {};
   Map<String, dynamic> _productionFeasibility = {};
   bool _showMaterialAnalysis = false;
+
+  // Local backup state to prevent data loss
+  String _backupDeviceName = '';
+  String _backupDescription = '';
+  String _backupQuantity = '1';
+  List<SubComponent> _backupSubComponents = [];
+  List<PCB> _backupPcbs = [];
 
   // Getters for provider state
   List<SubComponent> get _subComponents =>
@@ -40,40 +52,200 @@ class _PcbCreationScreenState extends ConsumerState<PcbCreationScreen>
   String? get _currentDeviceId =>
       ref.watch(pcbCreationProvider).currentDeviceId;
 
-  static const _preloadedComponents = [
-    'Enclosure',
-    'Display',
-    'SMPS',
-    'Manifold',
-    'DP sensor',
-    'Restkit',
-    'Regulator',
-    'Filter',
-    'Calport',
-    'Nut',
-  ];
-
   @override
   void initState() {
     super.initState();
+    debugPrint('PCB Creation Screen - initState called');
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _initializeScreen();
+    });
+  }
+
+  void _initializeScreen() {
+    debugPrint('PCB Creation Screen - _initializeScreen called');
+
+    final currentState = ref.read(pcbCreationProvider);
+    final hasExistingData =
+        currentState.deviceName.isNotEmpty ||
+        currentState.subComponents.isNotEmpty ||
+        currentState.pcbs.isNotEmpty;
+
     if (widget.deviceToEdit != null) {
-      // Delay provider modification until after widget tree is built
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        ref
-            .read(pcbCreationProvider.notifier)
-            .initializeForEdit(widget.deviceToEdit!);
-        _updateMaterialRequirements(); // Analyze existing device
-      });
+      debugPrint('Initializing for edit mode');
+      ref
+          .read(pcbCreationProvider.notifier)
+          .initializeForEdit(widget.deviceToEdit!);
+    } else if (!hasExistingData) {
+      debugPrint('Initializing for create mode - provider is empty');
+      ref.read(pcbCreationProvider.notifier).initializeForCreate();
     } else {
-      // Delay provider modification until after widget tree is built
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        ref.read(pcbCreationProvider.notifier).initializeForCreate();
-      });
+      debugPrint('Skipping initialization - provider already has data');
+      debugPrint(
+        'Current state: ${currentState.deviceName}, ${currentState.subComponents.length} components, ${currentState.pcbs.length} PCBs',
+      );
+    }
+
+    _initializeControllersFromProvider();
+    _createBackupState();
+    _updateMaterialRequirements();
+  }
+
+  void _initializeControllersFromProvider() {
+    final pcbCreationState = ref.read(pcbCreationProvider);
+    debugPrint(
+      'Initializing controllers from provider: ${pcbCreationState.deviceName}',
+    );
+
+    // Remove existing listeners to prevent conflicts
+    _deviceNameController.removeListener(_onDeviceNameChanged);
+    _descriptionController.removeListener(_onDescriptionChanged);
+    _quantityController.removeListener(_onQuantityChanged);
+
+    // Set controller values
+    _deviceNameController.text = pcbCreationState.deviceName;
+    _descriptionController.text = pcbCreationState.description;
+    _quantityController.text = pcbCreationState.quantity;
+
+    // Add listeners after setting values
+    _deviceNameController.addListener(_onDeviceNameChanged);
+    _descriptionController.addListener(_onDescriptionChanged);
+    _quantityController.addListener(_onQuantityChanged);
+
+    _isInitialized = true;
+    setState(() {});
+  }
+
+  void _createBackupState() {
+    final pcbCreationState = ref.read(pcbCreationProvider);
+    debugPrint('Creating backup state');
+
+    _backupDeviceName = pcbCreationState.deviceName;
+    _backupDescription = pcbCreationState.description;
+    _backupQuantity = pcbCreationState.quantity;
+    _backupSubComponents = List.from(pcbCreationState.subComponents);
+    _backupPcbs = List.from(pcbCreationState.pcbs);
+  }
+
+  void _restoreFromBackup() {
+    debugPrint('Restoring from backup state');
+
+    ref
+        .read(pcbCreationProvider.notifier)
+        .restoreState(
+          deviceName: _backupDeviceName,
+          description: _backupDescription,
+          quantity: _backupQuantity,
+          subComponents: _backupSubComponents,
+          pcbs: _backupPcbs,
+        );
+
+    _initializeControllersFromProvider();
+  }
+
+  void _onDeviceNameChanged() {
+    final currentValue = ref.read(pcbCreationProvider).deviceName;
+    if (_deviceNameController.text != currentValue) {
+      debugPrint('Device name changed: ${_deviceNameController.text}');
+      ref
+          .read(pcbCreationProvider.notifier)
+          .updateDeviceName(_deviceNameController.text);
+      _backupDeviceName = _deviceNameController.text;
+      _updateMaterialRequirements();
+    }
+  }
+
+  void _onDescriptionChanged() {
+    final currentValue = ref.read(pcbCreationProvider).description;
+    if (_descriptionController.text != currentValue) {
+      debugPrint('Description changed: ${_descriptionController.text}');
+      ref
+          .read(pcbCreationProvider.notifier)
+          .updateDescription(_descriptionController.text);
+      _backupDescription = _descriptionController.text;
+    }
+  }
+
+  void _onQuantityChanged() {
+    final currentValue = ref.read(pcbCreationProvider).quantity;
+    if (_quantityController.text != currentValue) {
+      debugPrint('Quantity changed: ${_quantityController.text}');
+      ref
+          .read(pcbCreationProvider.notifier)
+          .updateQuantity(_quantityController.text);
+      _backupQuantity = _quantityController.text;
+      _updateMaterialRequirements();
     }
   }
 
   @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    debugPrint('PCB Creation Screen - didChangeDependencies called');
+
+    if (_isInitialized && !_hasRestoredState) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _checkAndRestoreState();
+      });
+    }
+  }
+
+  void _checkAndRestoreState() {
+    final pcbCreationState = ref.read(pcbCreationProvider);
+    debugPrint(
+      'Checking state - Provider has ${pcbCreationState.subComponents.length} components, ${pcbCreationState.pcbs.length} PCBs',
+    );
+    debugPrint(
+      'Backup has ${_backupSubComponents.length} components, ${_backupPcbs.length} PCBs',
+    );
+
+    // Check if provider state was reset (empty when backup has data)
+    final providerIsEmpty =
+        pcbCreationState.deviceName.isEmpty &&
+        pcbCreationState.subComponents.isEmpty &&
+        pcbCreationState.pcbs.isEmpty;
+
+    final backupHasData =
+        _backupDeviceName.isNotEmpty ||
+        _backupSubComponents.isNotEmpty ||
+        _backupPcbs.isNotEmpty;
+
+    if (providerIsEmpty && backupHasData) {
+      debugPrint('Provider state was reset, restoring from backup');
+      _restoreFromBackup();
+    } else {
+      debugPrint('Updating controllers from current provider state');
+      _updateControllersFromProvider();
+    }
+
+    _hasRestoredState = true;
+    _updateMaterialRequirements();
+  }
+
+  void _updateControllersFromProvider() {
+    final pcbCreationState = ref.read(pcbCreationProvider);
+
+    if (_deviceNameController.text != pcbCreationState.deviceName) {
+      _deviceNameController.text = pcbCreationState.deviceName;
+    }
+    if (_descriptionController.text != pcbCreationState.description) {
+      _descriptionController.text = pcbCreationState.description;
+    }
+    if (_quantityController.text != pcbCreationState.quantity) {
+      _quantityController.text = pcbCreationState.quantity;
+    }
+
+    setState(() {});
+  }
+
+  @override
   void dispose() {
+    debugPrint('PCB Creation Screen - dispose called');
+
+    _deviceNameController.removeListener(_onDeviceNameChanged);
+    _descriptionController.removeListener(_onDescriptionChanged);
+    _quantityController.removeListener(_onQuantityChanged);
+
     _deviceNameController.dispose();
     _descriptionController.dispose();
     _quantityController.dispose();
@@ -82,48 +254,62 @@ class _PcbCreationScreenState extends ConsumerState<PcbCreationScreen>
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: Text(
-          widget.deviceToEdit == null
-              ? AppStrings.pcbCreationTitle
-              : 'Edit Device',
-        ),
-        actions: [
-          if (_materialRequirements.isNotEmpty)
-            IconButton(
-              icon: Icon(
-                Icons.analytics,
-                color: _productionFeasibility['canProduce'] == true
-                    ? Colors.green
-                    : Colors.orange,
-              ),
-              onPressed: () => _showProductionPlanningDialog(),
-              tooltip: 'Production Planning',
-            ),
-          IconButton(
-            icon: const Icon(Icons.help_outline),
-            onPressed: _showHelpDialog,
+    super.build(context);
+
+    final pcbCreationState = ref.watch(pcbCreationProvider);
+    debugPrint(
+      'Building with ${pcbCreationState.subComponents.length} components, ${pcbCreationState.pcbs.length} PCBs',
+    );
+
+    return PopScope(
+      canPop: true,
+      onPopInvoked: (didPop) {
+        debugPrint('PopScope invoked, creating backup');
+        _createBackupState();
+      },
+      child: Scaffold(
+        appBar: AppBar(
+          title: Text(
+            widget.deviceToEdit == null
+                ? AppStrings.pcbCreationTitle
+                : 'Edit Device',
           ),
-        ],
-      ),
-      body: Form(
-        key: _formKey,
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.all(16),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              _buildDeviceSection(),
-              const SizedBox(height: 24),
-              _buildComponentsSection(),
-              const SizedBox(height: 24),
-              _buildPcbSection(),
-              const SizedBox(height: 24),
-              if (_showMaterialAnalysis) _buildMaterialRequirementsSection(),
-              const SizedBox(height: 32),
-              _buildCreateButton(),
-            ],
+          actions: [
+            if (_materialRequirements.isNotEmpty)
+              IconButton(
+                icon: Icon(
+                  Icons.analytics,
+                  color: _productionFeasibility['canProduce'] == true
+                      ? Colors.green
+                      : Colors.orange,
+                ),
+                onPressed: () => _showProductionPlanningDialog(),
+                tooltip: 'Production Planning',
+              ),
+            IconButton(
+              icon: const Icon(Icons.help_outline),
+              onPressed: _showHelpDialog,
+            ),
+          ],
+        ),
+        body: Form(
+          key: _formKey,
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                _buildDeviceSection(),
+                const SizedBox(height: 24),
+                _buildComponentsSection(),
+                const SizedBox(height: 24),
+                _buildPcbSection(),
+                const SizedBox(height: 24),
+                if (_showMaterialAnalysis) _buildMaterialRequirementsSection(),
+                const SizedBox(height: 32),
+                _buildCreateButton(),
+              ],
+            ),
           ),
         ),
       ),
@@ -131,8 +317,6 @@ class _PcbCreationScreenState extends ConsumerState<PcbCreationScreen>
   }
 
   Widget _buildDeviceSection() {
-    final pcbCreationState = ref.watch(pcbCreationProvider);
-
     return _buildCard('Device Information', Icons.memory, [
       TextFormField(
         controller: _deviceNameController,
@@ -144,26 +328,19 @@ class _PcbCreationScreenState extends ConsumerState<PcbCreationScreen>
         validator: (value) => value == null || value.trim().isEmpty
             ? 'Please enter device name'
             : null,
-        onChanged: (value) {
-          ref.read(pcbCreationProvider.notifier).updateDeviceName(value);
-          _updateMaterialRequirements();
-        },
       ),
       const SizedBox(height: 16),
       TextFormField(
-        initialValue: pcbCreationState.description,
+        controller: _descriptionController,
         decoration: const InputDecoration(
           labelText: 'Description (Optional)',
           prefixIcon: Icon(Icons.description),
         ),
         maxLines: 3,
-        onChanged: (value) {
-          ref.read(pcbCreationProvider.notifier).updateDescription(value);
-        },
       ),
       const SizedBox(height: 16),
       TextFormField(
-        initialValue: pcbCreationState.quantity,
+        controller: _quantityController,
         decoration: const InputDecoration(
           labelText: 'Quantity to Produce *',
           prefixIcon: Icon(Icons.production_quantity_limits),
@@ -179,10 +356,6 @@ class _PcbCreationScreenState extends ConsumerState<PcbCreationScreen>
             return 'Please enter a valid positive number';
           }
           return null;
-        },
-        onChanged: (value) {
-          ref.read(pcbCreationProvider.notifier).updateQuantity(value);
-          _updateMaterialRequirements();
         },
       ),
     ]);
@@ -337,7 +510,7 @@ class _PcbCreationScreenState extends ConsumerState<PcbCreationScreen>
           _buildMenuItem(
             'Delete',
             Icons.delete,
-            () => _removeItem(index, _subComponents, 'component'),
+            () => _removeItem(index, 'component'),
             isDestructive: true,
           ),
         ]),
@@ -384,7 +557,7 @@ class _PcbCreationScreenState extends ConsumerState<PcbCreationScreen>
               _buildMenuItem(
                 'Delete',
                 Icons.delete,
-                () => _removeItem(index, _pcbs, 'PCB'),
+                () => _removeItem(index, 'PCB'),
                 isDestructive: true,
               ),
             ]),
@@ -494,12 +667,10 @@ class _PcbCreationScreenState extends ConsumerState<PcbCreationScreen>
     }
   }
 
-  // Show production planning dialog
   void _showProductionPlanningDialog() {
     final pcbCreationState = ref.read(pcbCreationProvider);
     final quantity = int.tryParse(pcbCreationState.quantity) ?? 1;
 
-    // Compute missing materials outside the widget tree
     final missingMaterials = _productionFeasibility['missingMaterials'] != null
         ? List.from(
             _productionFeasibility['missingMaterials'] as List<dynamic>,
@@ -517,7 +688,6 @@ class _PcbCreationScreenState extends ConsumerState<PcbCreationScreen>
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // Production summary
                 Container(
                   padding: const EdgeInsets.all(12),
                   decoration: BoxDecoration(
@@ -545,9 +715,9 @@ class _PcbCreationScreenState extends ConsumerState<PcbCreationScreen>
                                 : Colors.orange,
                           ),
                           const SizedBox(width: 8),
-                          Text(
+                          const Text(
                             'Production Analysis',
-                            style: const TextStyle(fontWeight: FontWeight.bold),
+                            style: TextStyle(fontWeight: FontWeight.bold),
                           ),
                         ],
                       ),
@@ -565,7 +735,6 @@ class _PcbCreationScreenState extends ConsumerState<PcbCreationScreen>
                 ),
                 const SizedBox(height: 16),
 
-                // Material requirements
                 if (_materialRequirements.isNotEmpty) ...[
                   const Text(
                     'Material Requirements:',
@@ -639,7 +808,6 @@ class _PcbCreationScreenState extends ConsumerState<PcbCreationScreen>
                   }).toList(),
                 ],
 
-                // Missing materials
                 if (missingMaterials.isNotEmpty) ...[
                   const SizedBox(height: 16),
                   const Text(
@@ -684,9 +852,6 @@ class _PcbCreationScreenState extends ConsumerState<PcbCreationScreen>
     );
   }
 
-  // Dialogs
-  // Removed _showQuickAddDialog as Quick Add is replaced by Excel upload
-
   void _showComponentDialog([SubComponent? component, int? index]) {
     _showFormDialog(
       title: component == null ? 'Add Component' : 'Edit Component',
@@ -711,8 +876,9 @@ class _PcbCreationScreenState extends ConsumerState<PcbCreationScreen>
         } else {
           ref.read(pcbCreationProvider.notifier).addSubComponent(newComponent);
         }
+        _createBackupState();
         setState(() {});
-        _updateMaterialRequirements(); // Update analysis
+        _updateMaterialRequirements();
       },
     );
   }
@@ -738,8 +904,9 @@ class _PcbCreationScreenState extends ConsumerState<PcbCreationScreen>
         } else {
           ref.read(pcbCreationProvider.notifier).addPcb(newPcb);
         }
+        _createBackupState();
         setState(() {});
-        _updateMaterialRequirements(); // Update analysis
+        _updateMaterialRequirements();
       },
     );
   }
@@ -795,23 +962,8 @@ class _PcbCreationScreenState extends ConsumerState<PcbCreationScreen>
     );
   }
 
-  // Helper methods
-  void _addComponent(String name, [int? quantity]) {
-    setState(() {
-      _subComponents.add(
-        SubComponent(
-          id: DateTime.now().millisecondsSinceEpoch.toString(),
-          name: name,
-          quantity: quantity ?? 1,
-        ),
-      );
-    });
-    _updateMaterialRequirements(); // Update analysis
-  }
-
   Future<void> _handleExcelUpload() async {
     try {
-      // Pick Excel file
       final result = await FilePicker.platform.pickFiles(
         type: FileType.custom,
         allowedExtensions: ['xls', 'xlsx'],
@@ -819,7 +971,6 @@ class _PcbCreationScreenState extends ConsumerState<PcbCreationScreen>
       );
 
       if (result == null || result.files.isEmpty) {
-        // User cancelled
         return;
       }
 
@@ -834,23 +985,19 @@ class _PcbCreationScreenState extends ConsumerState<PcbCreationScreen>
         return;
       }
 
-      // Read file bytes
       final bytes = await File(filePath).readAsBytes();
       final excelFile = excel.Excel.decodeBytes(bytes);
 
       Map<String, int> materialsToUse = {};
 
-      // Iterate sheets and rows
       for (final sheetName in excelFile.tables.keys) {
         final sheet = excelFile.tables[sheetName];
         if (sheet == null) continue;
 
-        // Skip header row, start from row 1 (assuming row 0 is header)
         for (int rowIndex = 1; rowIndex < sheet.maxRows; rowIndex++) {
           final row = sheet.row(rowIndex);
           if (row.isEmpty) continue;
 
-          // Columns: A=0 Sr no, B=1 Description, C=2 Make, D=3 Series, E=4 Qty
           final descriptionCell = row.length > 1 ? row[1] : null;
           final qtyCell = row.length > 4 ? row[4] : null;
 
@@ -875,12 +1022,6 @@ class _PcbCreationScreenState extends ConsumerState<PcbCreationScreen>
         return;
       }
 
-      // Do NOT deduct materials here on Excel upload, only analyze and update UI
-      // await ref
-      //     .read(materialsProvider.notifier)
-      //     .useMaterialsByNames(materialsToUse);
-
-      // Convert materialsToUse map to SubComponent list and update provider
       final subComponents = materialsToUse.entries.map((entry) {
         return SubComponent(
           id: DateTime.now().millisecondsSinceEpoch.toString() + entry.key,
@@ -889,8 +1030,8 @@ class _PcbCreationScreenState extends ConsumerState<PcbCreationScreen>
         );
       }).toList();
 
-      // Replace all subComponents with new ones from Excel
       ref.read(pcbCreationProvider.notifier).setSubComponents(subComponents);
+      _createBackupState();
 
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
@@ -901,7 +1042,6 @@ class _PcbCreationScreenState extends ConsumerState<PcbCreationScreen>
         ),
       );
 
-      // Update UI to reflect new material data immediately
       _updateMaterialRequirements();
       setState(() {});
     } catch (e) {
@@ -914,10 +1054,10 @@ class _PcbCreationScreenState extends ConsumerState<PcbCreationScreen>
     }
   }
 
-  void _removeItem<T>(int index, List<T> list, String itemType) {
-    final itemName = list[index] is SubComponent
-        ? (list[index] as SubComponent).name
-        : (list[index] as PCB).name;
+  void _removeItem(int index, String itemType) {
+    final itemName = itemType == 'component'
+        ? _subComponents[index].name
+        : _pcbs[index].name;
 
     showDialog(
       context: context,
@@ -933,9 +1073,16 @@ class _PcbCreationScreenState extends ConsumerState<PcbCreationScreen>
             text: 'Remove',
             backgroundColor: Colors.red,
             onPressed: () {
-              setState(() => list.removeAt(index));
+              if (itemType == 'component') {
+                ref
+                    .read(pcbCreationProvider.notifier)
+                    .removeSubComponent(index);
+              } else {
+                ref.read(pcbCreationProvider.notifier).removePcb(index);
+              }
+              _createBackupState();
               Navigator.pop(context);
-              _updateMaterialRequirements(); // Update analysis
+              _updateMaterialRequirements();
             },
           ),
         ],
@@ -943,24 +1090,12 @@ class _PcbCreationScreenState extends ConsumerState<PcbCreationScreen>
     );
   }
 
-  /// Navigates to the BOM upload screen while preserving the current device state.
-  ///
-  /// This method ensures that the state of subComponents and PCBs remains intact
-  /// across navigation. A temporary device is created with the current state
-  /// (_subComponents, _pcbs, device name, description) and passed to the BOM upload screen.
-  /// On return, if a PCB is updated, it replaces the corresponding PCB in the list
-  /// and material requirements are recalculated.
-  ///
-  /// State persistence is maintained because:
-  /// - The StatefulWidget retains _subComponents and _pcbs lists in memory
-  /// - Navigation doesn't destroy the widget instance
-  /// - BOM upload screen has WillPopScope to prevent accidental state loss
-  /// - Only explicit saves update the state
   void _navigateToBomUpload(PCB pcb, int pcbIndex) async {
+    debugPrint('Navigating to BOM upload for PCB: ${pcb.name}');
+    _createBackupState();
+
     final pcbCreationState = ref.read(pcbCreationProvider);
 
-    // Create a temporary device with current state to pass to BOM upload
-    // This ensures BOM upload has access to all current subComponents and PCBs
     final tempDevice = widget.deviceToEdit != null
         ? widget.deviceToEdit!.copyWith(
             name: pcbCreationState.deviceName.trim().isNotEmpty
@@ -984,7 +1119,6 @@ class _PcbCreationScreenState extends ConsumerState<PcbCreationScreen>
             updatedAt: DateTime.now(),
           );
 
-    // Navigate to BOM upload screen with current PCB and device state
     final result = await Navigator.push<PCB>(
       context,
       MaterialPageRoute(
@@ -997,13 +1131,14 @@ class _PcbCreationScreenState extends ConsumerState<PcbCreationScreen>
       ),
     );
 
-    // Update the PCB with returned BOM data if available
-    // This preserves state by only updating the specific PCB that was modified
+    debugPrint('Returned from BOM upload');
+    _hasRestoredState = false;
+
     if (result != null) {
-      setState(() {
-        _pcbs[pcbIndex] = result;
-      });
-      _updateMaterialRequirements(); // Update analysis after BOM change
+      debugPrint('Updating PCB with BOM result');
+      ref.read(pcbCreationProvider.notifier).updatePcb(pcbIndex, result);
+      _createBackupState();
+      _updateMaterialRequirements();
 
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
@@ -1048,9 +1183,7 @@ class _PcbCreationScreenState extends ConsumerState<PcbCreationScreen>
             : _descriptionController.text.trim(),
       );
 
-      // Check if device is ready for production (has complete BOMs) and quantity > 0
       if (device.isReadyForProduction && quantity > 0) {
-        // Create device WITH automatic material deduction
         await ref
             .read(deviceProvider.notifier)
             .addDeviceWithProduction(device, quantity);
@@ -1066,7 +1199,6 @@ class _PcbCreationScreenState extends ConsumerState<PcbCreationScreen>
           );
         }
       } else {
-        // Create device WITHOUT material deduction
         await ref.read(deviceProvider.notifier).addDevice(device);
 
         if (mounted) {
@@ -1102,7 +1234,6 @@ class _PcbCreationScreenState extends ConsumerState<PcbCreationScreen>
     }
   }
 
-  // NEW: Handle create device with production
   Future<void> _handleCreateDeviceWithProduction() async {
     if (!_formKey.currentState!.validate() ||
         _deviceNameController.text.trim().isEmpty ||
@@ -1117,7 +1248,6 @@ class _PcbCreationScreenState extends ConsumerState<PcbCreationScreen>
     }
 
     final quantity = int.tryParse(_quantityController.text) ?? 1;
-
     setState(() => _isLoading = true);
 
     try {
@@ -1134,7 +1264,6 @@ class _PcbCreationScreenState extends ConsumerState<PcbCreationScreen>
             : _descriptionController.text.trim(),
       );
 
-      // Add device WITH production
       await ref
           .read(deviceProvider.notifier)
           .addDeviceWithProduction(device, quantity);
@@ -1243,7 +1372,7 @@ class _PcbCreationScreenState extends ConsumerState<PcbCreationScreen>
               const Text('7. Use production planning for detailed analysis'),
               const SizedBox(height: 12),
               const Text(
-                'NEW: Production Planning:',
+                'Production Planning:',
                 style: TextStyle(fontWeight: FontWeight.bold),
               ),
               const SizedBox(height: 4),
@@ -1255,16 +1384,6 @@ class _PcbCreationScreenState extends ConsumerState<PcbCreationScreen>
               const Text(
                 '• Create device with or without immediate production',
               ),
-              const SizedBox(height: 12),
-              const Text(
-                'Material Requirements:',
-                style: TextStyle(fontWeight: FontWeight.bold),
-              ),
-              const SizedBox(height: 4),
-              const Text('• System analyzes BOM data for material needs'),
-              const Text('• Real-time stock validation against inventory'),
-              const Text('• Highlights shortages and missing materials'),
-              const Text('• Calculates maximum producible quantity'),
               const SizedBox(height: 12),
               Container(
                 padding: const EdgeInsets.all(8),
@@ -1299,7 +1418,6 @@ class _PcbCreationScreenState extends ConsumerState<PcbCreationScreen>
     );
   }
 
-  // Update material requirements when device structure changes
   void _updateMaterialRequirements() {
     final quantity = int.tryParse(_quantityController.text) ?? 1;
     if (quantity <= 0) {
@@ -1311,7 +1429,6 @@ class _PcbCreationScreenState extends ConsumerState<PcbCreationScreen>
       return;
     }
 
-    // Calculate material requirements from current PCBs
     Map<String, int> requirements = {};
 
     for (PCB pcb in _pcbs) {
@@ -1329,7 +1446,6 @@ class _PcbCreationScreenState extends ConsumerState<PcbCreationScreen>
 
     _materialRequirements = requirements;
 
-    // Get production feasibility if we have requirements
     if (_materialRequirements.isNotEmpty) {
       final materialsNotifier = ref.read(materialsProvider.notifier);
       _productionFeasibility = materialsNotifier.analyzeMaterialRequirements(
@@ -1344,7 +1460,6 @@ class _PcbCreationScreenState extends ConsumerState<PcbCreationScreen>
     setState(() {});
   }
 
-  // Build material requirements section
   Widget _buildMaterialRequirementsSection() {
     if (_materialRequirements.isEmpty) {
       return const SizedBox.shrink();
@@ -1361,7 +1476,6 @@ class _PcbCreationScreenState extends ConsumerState<PcbCreationScreen>
         _productionFeasibility['missingMaterials'] as List<String>? ?? [];
 
     return _buildCard('Production Analysis (${quantity}x)', Icons.analytics, [
-      // Summary
       Container(
         padding: const EdgeInsets.all(12),
         decoration: BoxDecoration(
@@ -1401,7 +1515,6 @@ class _PcbCreationScreenState extends ConsumerState<PcbCreationScreen>
       ),
       const SizedBox(height: 16),
 
-      // Quick material overview (first 3 items)
       ..._materialRequirements.entries.take(3).map((entry) {
         final materialName = entry.key;
         final requiredQty = entry.value;
@@ -1475,7 +1588,6 @@ class _PcbCreationScreenState extends ConsumerState<PcbCreationScreen>
         );
       }),
 
-      // Show more indicator if there are more materials
       if (_materialRequirements.length > 3) ...[
         const SizedBox(height: 8),
         Center(
