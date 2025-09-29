@@ -603,6 +603,23 @@ class PDFService {
         ),
       );
 
+      // Calculate totals
+      int totalComponents = devices.fold(
+        0,
+        (sum, device) => sum + device.subComponents.length,
+      );
+      int totalBomItems = devices.fold(
+        0,
+        (sum, device) =>
+            sum +
+            device.pcbs.fold(
+              0,
+              (pcbSum, pcb) =>
+                  pcbSum +
+                  (pcb.hasBOM && pcb.bom != null ? pcb.bom!.items.length : 0),
+            ),
+      );
+
       pdf.addPage(
         pw.Page(
           pageFormat: PdfPageFormat.a4,
@@ -613,12 +630,22 @@ class PDFService {
               pw.Container(
                 padding: const pw.EdgeInsets.all(20),
                 decoration: const pw.BoxDecoration(color: PdfColors.green50),
-                child: pw.Text(
-                  'All Finished Good Products',
-                  style: const pw.TextStyle(
-                    fontSize: 20,
-                    color: PdfColors.green900,
-                  ),
+                child: pw.Column(
+                  crossAxisAlignment: pw.CrossAxisAlignment.start,
+                  children: [
+                    pw.Text(
+                      'All Finished Good Products',
+                      style: const pw.TextStyle(
+                        fontSize: 20,
+                        color: PdfColors.green900,
+                      ),
+                    ),
+                    pw.SizedBox(height: 5),
+                    pw.Text(
+                      'Generated: ${_formatDateTime(DateTime.now())}',
+                      style: const pw.TextStyle(fontSize: 10),
+                    ),
+                  ],
                 ),
               ),
               pw.SizedBox(height: 20),
@@ -627,18 +654,136 @@ class PDFService {
                 style: const pw.TextStyle(fontSize: 14),
               ),
               pw.SizedBox(height: 20),
-              // Simple devices list
-              ...devices
-                  .take(10)
-                  .map(
-                    (device) => pw.Padding(
-                      padding: const pw.EdgeInsets.symmetric(vertical: 2),
-                      child: pw.Text(
-                        '• ${device.name}',
-                        style: const pw.TextStyle(fontSize: 10),
-                      ),
+              // Detailed devices table
+              pw.Table(
+                border: pw.TableBorder.all(
+                  color: PdfColors.grey300,
+                  width: 0.5,
+                ),
+                children: [
+                  // Header row
+                  pw.TableRow(
+                    decoration: const pw.BoxDecoration(
+                      color: PdfColors.grey100,
                     ),
+                    children: [
+                      pw.Padding(
+                        padding: const pw.EdgeInsets.all(6),
+                        child: pw.Text(
+                          'Device Name',
+                          style: const pw.TextStyle(fontSize: 9),
+                        ),
+                      ),
+                      pw.Padding(
+                        padding: const pw.EdgeInsets.all(6),
+                        child: pw.Text(
+                          'Created',
+                          style: const pw.TextStyle(fontSize: 9),
+                        ),
+                      ),
+                      pw.Padding(
+                        padding: const pw.EdgeInsets.all(6),
+                        child: pw.Text(
+                          'Updated',
+                          style: const pw.TextStyle(fontSize: 9),
+                        ),
+                      ),
+                      pw.Padding(
+                        padding: const pw.EdgeInsets.all(6),
+                        child: pw.Text(
+                          'Status',
+                          style: const pw.TextStyle(fontSize: 9),
+                        ),
+                      ),
+                      pw.Padding(
+                        padding: const pw.EdgeInsets.all(6),
+                        child: pw.Text(
+                          'Components',
+                          style: const pw.TextStyle(fontSize: 9),
+                        ),
+                      ),
+                      pw.Padding(
+                        padding: const pw.EdgeInsets.all(6),
+                        child: pw.Text(
+                          'BOM Items',
+                          style: const pw.TextStyle(fontSize: 9),
+                        ),
+                      ),
+                    ],
                   ),
+                  // Data rows
+                  ...devices.map((device) {
+                    int bomCount = device.pcbs.fold(
+                      0,
+                      (sum, pcb) =>
+                          sum +
+                          (pcb.hasBOM && pcb.bom != null
+                              ? pcb.bom!.items.length
+                              : 0),
+                    );
+                    return pw.TableRow(
+                      children: [
+                        pw.Padding(
+                          padding: const pw.EdgeInsets.all(6),
+                          child: pw.Text(
+                            device.name,
+                            style: const pw.TextStyle(fontSize: 8),
+                          ),
+                        ),
+                        pw.Padding(
+                          padding: const pw.EdgeInsets.all(6),
+                          child: pw.Text(
+                            _formatDateTime(device.createdAt),
+                            style: const pw.TextStyle(fontSize: 8),
+                          ),
+                        ),
+                        pw.Padding(
+                          padding: const pw.EdgeInsets.all(6),
+                          child: pw.Text(
+                            _formatDateTime(device.updatedAt),
+                            style: const pw.TextStyle(fontSize: 8),
+                          ),
+                        ),
+                        pw.Padding(
+                          padding: const pw.EdgeInsets.all(6),
+                          child: pw.Text(
+                            device.isReadyForProduction ? 'Ready' : 'Pending',
+                            style: const pw.TextStyle(fontSize: 8),
+                          ),
+                        ),
+                        pw.Padding(
+                          padding: const pw.EdgeInsets.all(6),
+                          child: pw.Text(
+                            device.subComponents.length.toString(),
+                            style: const pw.TextStyle(fontSize: 8),
+                          ),
+                        ),
+                        pw.Padding(
+                          padding: const pw.EdgeInsets.all(6),
+                          child: pw.Text(
+                            bomCount.toString(),
+                            style: const pw.TextStyle(fontSize: 8),
+                          ),
+                        ),
+                      ],
+                    );
+                  }),
+                ],
+              ),
+              pw.SizedBox(height: 20),
+              pw.Text(
+                'Summary Totals:',
+                style: const pw.TextStyle(fontSize: 12),
+              ),
+              pw.SizedBox(height: 10),
+              pw.Text(
+                'Total Components Used: $totalComponents',
+                style: const pw.TextStyle(fontSize: 10),
+              ),
+              pw.Text(
+                'Total BOM Items: $totalBomItems',
+                style: const pw.TextStyle(fontSize: 10),
+              ),
             ],
           ),
         ),
