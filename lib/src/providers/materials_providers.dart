@@ -122,9 +122,23 @@ class MaterialsNotifier extends StateNotifier<AsyncValue<List<Material>>> {
     try {
       int index = _allMaterials.indexWhere((m) => m.id == materialId);
       if (index != -1) {
-        _allMaterials[index] = _allMaterials[index].copyWith(
-          remainingQuantity: newQuantity,
-          usedQuantity: _allMaterials[index].initialQuantity - newQuantity,
+        Material oldMaterial = _allMaterials[index];
+
+        // FIXED: Ensure new quantity doesn't exceed initial quantity
+        int validatedQuantity = math.min(
+          newQuantity,
+          oldMaterial.initialQuantity,
+        );
+        validatedQuantity = math.max(
+          0,
+          validatedQuantity,
+        ); // Ensure non-negative
+
+        int newUsedQuantity = oldMaterial.initialQuantity - validatedQuantity;
+
+        _allMaterials[index] = oldMaterial.copyWith(
+          remainingQuantity: validatedQuantity,
+          usedQuantity: newUsedQuantity,
           lastUsedAt: DateTime.now(),
         );
         state = AsyncValue.data(List.from(_allMaterials));
@@ -149,15 +163,17 @@ class MaterialsNotifier extends StateNotifier<AsyncValue<List<Material>>> {
 
         if (index != -1) {
           Material material = _allMaterials[index];
-          int newRemainingQuantity =
-              (material.remainingQuantity - quantityToUse).clamp(
-                0,
-                material.initialQuantity,
-              );
+
+          // FIXED: Proper calculation
+          int newRemainingQuantity = math.max(
+            0,
+            material.remainingQuantity - quantityToUse,
+          );
+          int newUsedQuantity = material.initialQuantity - newRemainingQuantity;
 
           _allMaterials[index] = material.copyWith(
             remainingQuantity: newRemainingQuantity,
-            usedQuantity: material.initialQuantity - newRemainingQuantity,
+            usedQuantity: newUsedQuantity,
             lastUsedAt: DateTime.now(),
           );
 
@@ -172,7 +188,6 @@ class MaterialsNotifier extends StateNotifier<AsyncValue<List<Material>>> {
     }
   }
 
-  // Use materials by names (decrease remaining quantity)
   Future<void> useMaterialsByNames(Map<String, int> materialNamesToUse) async {
     try {
       print('=== Starting useMaterialsByNames ===');
@@ -195,17 +210,23 @@ class MaterialsNotifier extends StateNotifier<AsyncValue<List<Material>>> {
             'BEFORE: ${oldMaterial.name} - Remaining: ${oldMaterial.remainingQuantity}, Used: ${oldMaterial.usedQuantity}',
           );
 
-          int newRemainingQuantity =
-              (oldMaterial.remainingQuantity - quantityToUse).clamp(
-                0,
-                oldMaterial.initialQuantity,
-              );
+          // FIXED: Proper calculation without incorrect clamping
+          int newRemainingQuantity = math.max(
+            0,
+            oldMaterial.remainingQuantity - quantityToUse,
+          );
           int newUsedQuantity =
               oldMaterial.initialQuantity - newRemainingQuantity;
 
+          // Ensure used quantity doesn't exceed initial quantity
+          newUsedQuantity = math.min(
+            newUsedQuantity,
+            oldMaterial.initialQuantity,
+          );
+
           Material updatedMaterial = oldMaterial.copyWith(
             remainingQuantity: newRemainingQuantity,
-            usedQuantity: newUsedQuantity, // Explicitly set used quantity
+            usedQuantity: newUsedQuantity,
             lastUsedAt: DateTime.now(),
           );
 
@@ -227,7 +248,7 @@ class MaterialsNotifier extends StateNotifier<AsyncValue<List<Material>>> {
         }
       }
 
-      // CRITICAL: Force state update with delay to ensure all updates are complete
+      // Force state update with delay to ensure all updates are complete
       if (hasChanges) {
         print('=== Forcing state update ===');
         state = AsyncValue.data(List.from(_allMaterials));
